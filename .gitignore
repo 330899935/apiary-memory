@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 构建产物 —— 由触角构建（构建归触角），不入版本历史
+dist/
+build/
+
+# 临时 / 备份 —— 主巢裁定 Q3-② 明确排除
+*.bak_*
+
+# macOS
+.DS_Store

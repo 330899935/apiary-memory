@@ -1,0 +1,66 @@
+name: Publish to PyPI
+
+# 目的：让「发版」永远不需要任何人手里有 PyPI token。
+# 走 PyPI 的「可信发布」（Trusted Publishing，OIDC），凭 GitHub 身份直接授权。
+# 配好之后发版 = git tag v0.1.3 && git push --tags，剩下的 CI 干。
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/memory-hive-mcp/
+    permissions:
+      id-token: write # 可信发布必需：用来换取 PyPI 的一次性凭证
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 防止「tag 打错版本号就把旧版本再发一遍」或「版本号撞车」。
+      # 注意：只在 tag 触发时比对。workflow_dispatch 的 GITHUB_REF_NAME 是分支名，
+      # 硬比必然红（2026-10-21 被触角揪出，已修）——手动补发是 CI 失败/PyPI 抽风时的唯一退路，
+      # 不能因为校验写死就把它堵死。
+      - name: 版本号与 tag 必须一致
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -e
+          TAG="${GITHUB_REF_NAME#v}"
+          VER=$(python3 -c "import tomllib,pathlib;print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          echo "git tag = $TAG"
+          echo "pyproject = $VER"
+          if [ "$TAG" != "$VER" ]; then
+            echo "::error::tag($TAG) 与 pyproject 版本($VER) 不一致，拒绝发版"
+            exit 1
+          fi
+
+      - name: 构建 sdist + wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+
+      - name: 上传前体检
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check dist/*
+
+      # 关键一步：不传用户名、不传密码、不传 token。
+      # id-token 由 GitHub 签发，PyPI 校验「这个仓库 + 这个 workflow + 这个 environment」后放行。
+      #
+      # skip-existing 只在手动触发时打开，理由（2026-10-21 与触角对完账）：
+      #   · PyPI 不允许同一版本覆盖同名文件 ⇒ 半途断掉时，直接重跑会卡在已上传那个产物上。
+      #   · 但 README 明确警告：别轻易开这个开关，重复版本应该「大声失败」。
+      #   · 所以只给逃生门开：dispatch → 跳过已存在的文件，把欠的补齐；tag 推送 → 照旧大声报错。
+      # 注意：真的「发错了内容」时，跳过不等于修好 —— 那种情况只能升版本号重发。
+      - name: 发布到 PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: ${{ github.event_name == 'workflow_dispatch' }}
