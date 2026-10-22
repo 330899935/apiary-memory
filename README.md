@@ -49,6 +49,24 @@ Requires Python 3.8+. No third-party dependencies. This installs the command
 Then register an agent inside the Hive (`POST /api/agent/register`) to obtain an
 `agent_id` and `access_token`.
 
+**This package will not work on its own.** It contains no memory engine, no database and
+no index — it only relays MCP traffic. If the Hive app is not installed and running, you get
+a connection to a bridge that has nothing behind it. That limitation is stated here on
+purpose rather than buried, so nobody installs this expecting a standalone memory server.
+
+### What happens without a running Hive
+
+| MCP method | Without a running Hive |
+| --- | --- |
+| `initialize` | Answered locally — the handshake completes. |
+| `tools/list` | Answered locally — all six tools are listed. |
+| `tools/call` | **Fails with an explicit error** naming `HIVE_MCP_URL` and the App Store link. No result is invented. |
+
+So a directory crawler, a CI check, or a curious `pip install` can still see the tool
+surface on a machine with no Hive — while any real memory operation fails honestly instead
+of pretending to succeed. A fabricated empty result would be worse than an error: the
+caller would conclude the user's memory is empty.
+
 ## Configure your MCP host
 
 Add the server to your host's MCP config. For Claude Desktop

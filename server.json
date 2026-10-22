@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.330899935/hive-memory",
+  "title": "Memory Hive",
+  "description": "Local-first memory over MCP. Agents propose; only you confirm. Requires the Hive app.",
+  "version": "0.1.3",
+  "websiteUrl": "https://hello-fengchao.com",
+  "repository": {
+    "url": "https://github.com/330899935/memory-hive-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "memory-hive-mcp",
+      "version": "0.1.3",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "HIVE_AGENT_ID",
+          "description": "Agent id issued by your own Hive (POST /api/agent/register). The Hive app must be running on the same machine.",
+          "format": "string",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "HIVE_AGENT_TOKEN",
+          "description": "Access token issued by your own Hive when the agent is registered.",
+          "format": "string",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "HIVE_MCP_URL",
+          "description": "Hive MCP endpoint. Defaults to http://127.0.0.1:8768/mcp",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "http://127.0.0.1:8768/mcp"
+        }
+      ]
+    }
+  ]
+}

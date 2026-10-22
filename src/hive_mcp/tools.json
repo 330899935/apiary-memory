@@ -1,0 +1,182 @@
+{
+  "$comment": "SINGLE SOURCE OF TRUTH for the six tools. Code reads this file; tests assert README/server.json/glama.json stay in sync. Do not duplicate these definitions anywhere else.",
+  "tools": [
+    {
+      "name": "recall",
+      "description": "Semantic search over the user's own memory. Read-only. Returns the closest stored memories for a natural-language query.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Natural-language search text, e.g. 'what did we decide about the pricing page'."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of memories to return.",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "compact": {
+            "type": "boolean",
+            "description": "Return trimmed records instead of full bodies.",
+            "default": true
+          },
+          "vaults": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Narrow the search to these vaults. Omit to search every vault the agent may read."
+          },
+          "query_vector": {
+            "type": "array",
+            "items": { "type": "number" },
+            "description": "Precomputed embedding. When supplied, recall uses vector search instead of text search."
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "propose",
+      "description": "Submit a memory for the user's approval. Write-path, but it lands in a pending queue and stays there until the human accepts it inside their own Hive. The agent cannot self-confirm.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "The memory text to store, written as a standalone fact that will still make sense later."
+          },
+          "title": {
+            "type": "string",
+            "description": "Short label shown in the pending queue."
+          },
+          "vault": {
+            "type": "string",
+            "description": "Target vault name. Private vaults are rejected for cloud agents."
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Free-form tags for later filtering."
+          },
+          "vector": {
+            "type": "array",
+            "items": { "type": "number" },
+            "description": "Optional precomputed embedding stored alongside the memory."
+          },
+          "client_id": {
+            "type": "string",
+            "description": "Idempotency key. Submitting twice with the same key does not create a duplicate."
+          }
+        },
+        "required": ["content"]
+      }
+    },
+    {
+      "name": "manage",
+      "description": "Administrative operations on stored memory, routed by the 'action' field: list_pending, forget (soft delete), restore, get_by_id, discard_pending.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["list_pending", "forget", "restore", "get_by_id", "discard_pending"],
+            "description": "Which administrative operation to run."
+          },
+          "id": {
+            "type": "string",
+            "description": "Target memory id. Required for forget, restore, get_by_id and discard_pending."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum rows to return for list_pending.",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "required": ["action"]
+      }
+    },
+    {
+      "name": "get_context",
+      "description": "Pull recent memory from active threads and open tasks, to seed a conversation at session start. Read-only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of context entries to return.",
+            "default": 8,
+            "minimum": 1,
+            "maximum": 50
+          }
+        }
+      }
+    },
+    {
+      "name": "say",
+      "description": "Post a message to the shared board so other agents and the human see the hand-off. Identity comes from the credential, not from a settable field.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": "string",
+            "description": "What was just done, in one or two sentences."
+          },
+          "to": {
+            "type": "string",
+            "description": "Address the message to a specific agent or to the human."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Message kind, e.g. update, request, handoff."
+          },
+          "stage": {
+            "type": "string",
+            "description": "Free-form workflow stage label."
+          },
+          "task_id": {
+            "type": "string",
+            "description": "Link this message to an existing task."
+          },
+          "refs": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "References such as file paths, commits or memory ids."
+          },
+          "ttl": {
+            "type": "integer",
+            "description": "Seconds after which the message stops being returned by board."
+          }
+        },
+        "required": ["summary"]
+      }
+    },
+    {
+      "name": "board",
+      "description": "Read the shared board with a cursor, so a later poll only returns what arrived since the last read. Read-only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of messages to return.",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 200
+          },
+          "since": {
+            "type": "string",
+            "description": "Cursor from a previous call. Only messages newer than this cursor are returned."
+          },
+          "roster": {
+            "type": "boolean",
+            "description": "Also return who is currently on duty."
+          }
+        }
+      }
+    }
+  ]
+}
