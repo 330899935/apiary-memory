@@ -8,6 +8,32 @@ versions may change configuration.
 
 ---
 
+---
+
+## 0.1.5 — 2026-10-22
+
+Completes what 0.1.4 claimed but did not do. Same-day follow-up, for one reason: 0.1.4's
+changelog and README both said an auth failure gets a pointer to `HIVE_AGENT_ID` /
+`HIVE_AGENT_TOKEN`. It did not.
+
+**The hint was attached to the wrong code path.** The Hive reports authentication failures as
+**HTTP 200 with a JSON-RPC error** (code `-32001`), not as an HTTP status. The credential hint
+was only applied inside the `urllib.error.HTTPError` branch, so on the real path — app
+installed, no agent registered, backend replying in Chinese — the message went through
+untouched. Reproduced against a live Hive, then pinned by a test.
+
+- **One decorator now handles auth-looking errors on every path**, including the HTTP 200
+  success path. The backend's own code and wording are preserved verbatim; only the
+  actionable pointer is appended.
+- Added `AuthHint` tests that stand up a fake backend returning `200` + `-32001`, so this
+  cannot regress silently. The suite is now 30 tests.
+- The hint is appended at most once: a message that already names the variables is left alone.
+
+That 0.1.4 shipped with a false claim is the point worth recording. The failure was not the
+bug — it was writing the changelog from *intent* instead of from a verified run. Every claim
+in this file is now checked against an actual call, and where a claim could rot, a test holds
+it.
+
 ## 0.1.4 — 2026-10-22
 
 Correctness release. Three defects in 0.1.3 could bite a real user; one was mine to
@@ -144,6 +170,7 @@ First public release.
 
 | Version | Date | Kind | Still installable |
 | --- | --- | --- | --- |
+| 0.1.5 | 2026-10-22 | completes 0.1.4's credential hint (it was on the wrong code path) | yes |
 | 0.1.4 | 2026-10-22 | correctness: proxy-safe error path, schema fidelity, protocol floor | yes |
 | 0.1.3 | 2026-10-22 | offline degradation: handshake and tools/list without a Hive | yes |
 | 0.1.2 | 2026-10-22 | metadata fix (Registry repository pointer) | yes |

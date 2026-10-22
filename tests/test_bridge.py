@@ -215,6 +215,84 @@ class ProxyEnvironment(unittest.TestCase):
         self.assertEqual(self._message({}), self._message(self.PROXY))
 
 
+class AuthHint(unittest.TestCase):
+    """The most common real stall: Hive up, no agent registered.
+
+    2026-10-22: the Hive answers auth failures as **HTTP 200 with a JSON-RPC error**,
+    not as an HTTP status. The hint was bolted onto the ``HTTPError`` branch only, so
+    it never fired on the real path — while the CHANGELOG claimed it did. This test
+    stands up a fake backend that behaves exactly like the real one.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import http.server
+        import threading
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                self.rfile.read(length)
+                body = json.dumps({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "error": {
+                        "code": -32001,
+                        "message": "缺少 agent_id + token（MCP Host 需先注册成触角领凭证）",
+                    },
+                }).encode("utf-8")
+                self.send_response(200)  # note: 200, not 401
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        cls.server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        cls.port = cls.server.server_address[1]
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        cls.url = f"http://127.0.0.1:{cls.port}/mcp"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def test_auth_error_over_http_200_gets_the_credential_hint(self):
+        resp = one(
+            [{
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {"name": "recall", "arguments": {"query": "x"}},
+            }],
+            {"HIVE_MCP_URL": self.url},
+        )
+        self.assertIn("error", resp)
+        err = resp["error"]
+        # The backend's own code and text survive verbatim.
+        self.assertEqual(err["code"], -32001)
+        self.assertIn("agent_id", err["message"])
+        # ...and the actionable pointer is added.
+        self.assertIn(
+            "HIVE_AGENT_ID", err["message"],
+            f"auth failure must point at the env vars: {err['message']}",
+        )
+        self.assertIn("HIVE_AGENT_TOKEN", err["message"])
+
+    def test_hint_is_not_added_twice(self):
+        """A message that already mentions the env vars must not be doubled."""
+        resp = one(
+            [{
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {"name": "recall", "arguments": {"query": "x"}},
+            }],
+            {"HIVE_MCP_URL": self.url},
+        )
+        self.assertEqual(resp["error"]["message"].count("HIVE_AGENT_ID"), 1)
+
+
 class SchemaFidelity(unittest.TestCase):
     """The offline snapshot must mirror the backend, not paraphrase it."""
 

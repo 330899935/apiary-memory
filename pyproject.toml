@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memory-hive-mcp"
-version = "0.1.4"
+version = "0.1.5"
 description = "Local-first memory your AI agents share over MCP. Agents propose; only you confirm."
 readme = "README.md"
 requires-python = ">=3.8"

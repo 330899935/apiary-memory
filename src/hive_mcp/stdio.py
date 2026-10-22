@@ -56,9 +56,9 @@ try:  # 版本号只认一次装出来的元数据，别再手写一份（0.1.0 
     try:
         __version__ = _pkg_version("memory-hive-mcp")
     except PackageNotFoundError:  # 源码树里直接跑，没有安装元数据
-        __version__ = "0.1.4"
+        __version__ = "0.1.5"
 except ImportError:  # Python < 3.8 之外的兜底
-    __version__ = "0.1.4"
+    __version__ = "0.1.5"
 
 AGENT_ID = os.environ.get("HIVE_AGENT_ID", "")
 AGENT_TOKEN = os.environ.get("HIVE_AGENT_TOKEN", "")
@@ -193,6 +193,23 @@ def _upstream_error(payload, code, detail, reason=""):
     )
 
 
+def _decorate_error(parsed, msg_id):
+    """Add the credential hint to an auth-looking JSON-RPC error, else pass through.
+
+    The Hive answers auth failures as **HTTP 200 with a JSON-RPC error** (code
+    -32001), not as an HTTP status. Checking only the ``HTTPError`` branch left
+    the most common real-world stall — app installed, agent never registered, and
+    a Chinese-only message — with no pointer to HIVE_AGENT_ID / HIVE_AGENT_TOKEN.
+    """
+    if not isinstance(parsed, dict) or not parsed.get("error"):
+        return parsed
+    err = dict(parsed["error"])
+    msg = str(err.get("message", ""))
+    if any(k in msg for k in _LOOKS_LIKE_AUTH) and "HIVE_AGENT_ID" not in msg:
+        err["message"] = msg + _auth_hint()
+    return {"jsonrpc": "2.0", "id": msg_id, "error": err}
+
+
 def forward(payload, timeout=CALL_TIMEOUT):
     """POST the payload to the Hive.
 
@@ -214,7 +231,9 @@ def forward(payload, timeout=CALL_TIMEOUT):
             raw = resp.read().decode("utf-8")
             if not raw.strip():
                 return None  # empty body: stay silent rather than emit a false error
-            return json.loads(raw)
+            # The Hive reports auth failures as HTTP 200 + JSON-RPC error, so the
+            # hint must be applied here too, not only in the HTTPError branch.
+            return _decorate_error(json.loads(raw), payload.get("id"))
     except urllib.error.HTTPError as e:
         if e.code == 202:
             return None
@@ -229,11 +248,7 @@ def forward(payload, timeout=CALL_TIMEOUT):
         if isinstance(parsed, dict) and parsed.get("error"):
             # The Hive itself answered with a JSON-RPC error: pass it through
             # verbatim, but add the credential hint when it looks like auth.
-            err = dict(parsed["error"])
-            msg = str(err.get("message", ""))
-            if any(k in msg for k in _LOOKS_LIKE_AUTH) and "HIVE_AGENT_ID" not in msg:
-                err["message"] = msg + _auth_hint()
-            return {"jsonrpc": "2.0", "id": payload.get("id"), "error": err}
+            return _decorate_error(parsed, payload.get("id"))
         return _upstream_error(payload, e.code, f"HTTP {e.code}", f"HTTP {e.code}")
     except Exception as e:  # URLError, socket timeout, JSON decode, ...
         return _upstream_error(payload, UPSTREAM_DOWN, str(e), str(e))
