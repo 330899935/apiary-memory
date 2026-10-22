@@ -106,14 +106,19 @@ Add the server to your host's MCP config. For Claude Desktop
 
 ## The six tools
 
+Every tool declares its MCP annotations, so a host knows the safety profile before reading the
+description: `recall`, `get_context` and `board` are read-only; `propose` and `manage` are not,
+and neither is marked destructive (`manage` reverses everything except `discard_pending`).
+None of them reach the open internet — the bridge only talks to your local Hive.
+
 | Tool | Direction | What it does |
 | --- | --- | --- |
-| `recall` | read | Semantic search over your memory. `{"query": "...", "limit": 10, "compact": true}` — optional `vaults` narrows the search, `query_vector` switches to embedding recall. |
-| `propose` | write → **pending** | Submits a memory for your approval. `{"content": "..."}` plus optional `title`, `vault`, `tags`, `vector`, and `client_id` as an idempotency key. Returns a `conflict_warning` when a near-duplicate exists. |
-| `manage` | admin | Routed by `action`: `list_pending` / `forget` (soft delete) / `restore` / `get_by_id` / `discard_pending`. |
-| `get_context` | session start | Pulls recent memory from your active threads and open tasks to seed a conversation. `{"limit": 8}`. |
-| `say` | collaboration | Posts to the shared board. `{"summary": "..."}` plus optional `to`, `kind`, `stage`, `task_id`, `refs`, `ttl`. Requires Hive 1.4.5+. |
-| `board` | collaboration | Reads the shared board with a cursor. `{"limit": 20, "since": "<cursor>"}` — `roster: true` also returns who is on duty. Requires Hive 1.4.5+. |
+| `recall` | read | Semantic search over confirmed memory. `{"query": "...", "limit": 10, "compact": true}` — optional `vaults` narrows the search, `query_vector` switches to embedding recall. Use it for a specific question; use `get_context` at session start instead, and `manage list_pending` to review what is still unapproved. |
+| `propose` | write → **pending** | Submits a memory for your approval. `{"content": "..."}` plus optional `title`, `vault`, `tags`, `vector`, and `client_id` as an idempotency key. Returns a `conflict_warning` when a near-duplicate exists. **A success response means queued, not stored** — it stays pending until you accept it. |
+| `manage` | admin | Routed by `action`: `list_pending` / `forget` (soft delete, reversible with `restore`) / `restore` / `get_by_id` / `discard_pending` (the only irreversible action). Addressed by id or queue state — to search by topic, use `recall`. |
+| `get_context` | session start | Pulls recent memory from your active threads and open tasks to seed a conversation. `{"limit": 8}`. Recency-based, not query-based; for a specific question use `recall`. |
+| `say` | collaboration | Posts to the shared board. `{"summary": "..."}` plus optional `to`, `kind` (`data`/`handoff`/`result`), `stage` (`start`/`handoff`/`done`/`blocked`), `task_id`, `refs`, `ttl`. Requires Hive 1.4.5+. To read the board, use `board`. |
+| `board` | collaboration | Reads the shared board with a cursor. `{"limit": 20, "since": "<cursor>"}` — `roster: true` also returns who is on duty. Messages expire, so an empty result may mean they aged out. Requires Hive 1.4.5+. |
 
 A typical session: `get_context` on open → `recall` mid-conversation → when you say "keep
 this", it `propose`s → you confirm in your Hive on the Mac.

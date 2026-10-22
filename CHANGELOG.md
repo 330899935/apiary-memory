@@ -10,6 +10,53 @@ versions may change configuration.
 
 ---
 
+---
+
+## 0.1.6 — 2026-10-22
+
+Presentation release, aimed at directory crawlers. No behavioural change to the bridge.
+
+**The tool definitions were scoring badly, and the score is public.** Glama scores every tool
+of every listed server with TDQS (Tool Definition Quality Score) and publishes the
+per-dimension breakdown. Auditing our own six tools against that rubric before submitting put
+the set at roughly **3.05, tier C+** — squarely in the population the framework's source
+studies describe, where 97% of tool definitions carry at least one defect and 89% never say
+when a tool should or should not be used.
+
+Two gaps accounted for almost all of it, and both were 0 of 6:
+
+- **No MCP annotations.** `readOnlyHint`, `destructiveHint`, `idempotentHint` and
+  `openWorldHint` now declare the safety profile of each tool, so the descriptions can spend
+  their words on what annotations cannot express. `recall`, `get_context` and `board` are
+  marked read-only; `propose` and `manage` are not, and `manage` is explicitly *not*
+  destructive because every action except one is reversible.
+- **No usage guidance.** Every description now says when to use the tool, when not to, and
+  names the sibling that answers the excluded case — `recall` versus `get_context` (query
+  versus recency), `manage` versus `recall` (address versus query), `say` versus `board`
+  (write versus read).
+
+Also corrected while there: `propose` now states plainly that a success response means
+*queued, not stored*, which is the product's central claim and was previously only in the
+README; `manage` documents that `forget` is a soft delete restorable with `restore`, and that
+only `discard_pending` is irreversible; `board` notes that messages expire, so an empty result
+is ambiguous.
+
+Descriptions were kept in English here because this snapshot is what an English-language
+crawler indexes. A caller with a running Hive sees the backend's own (Chinese) descriptions
+instead, via forwarding — see 0.1.4.
+
+**Added `Dockerfile`.** Glama builds each server from a Dockerfile, either supplied by the
+maintainer or inferred by its build system; **if the inferred build fails, the profile is kept
+but distribution is withheld** and the server never appears in search. For a stdlib-only
+bridge there is nothing to infer, so a five-line file replaces that risk. It runs as a
+non-root user, installs from `pyproject.toml`, and opens no port.
+
+**Fixed stderr noise.** `python -m hive_mcp.stdio` emitted
+`RuntimeWarning: 'hive_mcp.stdio' found in sys.modules...` because `__init__.py` imported the
+submodule. A stdio server should keep stderr clean — a warning on every run teaches hosts and
+crawlers to ignore the channel they use to surface real errors. The package no longer imports
+`stdio`; use `from hive_mcp.stdio import main` or the `memory-hive-mcp` command.
+
 ## 0.1.5 — 2026-10-22
 
 Completes what 0.1.4 claimed but did not do. Same-day follow-up, for one reason: 0.1.4's
@@ -170,6 +217,7 @@ First public release.
 
 | Version | Date | Kind | Still installable |
 | --- | --- | --- | --- |
+| 0.1.6 | 2026-10-22 | TDQS-oriented tool definitions, annotations, Dockerfile, quiet stderr | yes |
 | 0.1.5 | 2026-10-22 | completes 0.1.4's credential hint (it was on the wrong code path) | yes |
 | 0.1.4 | 2026-10-22 | correctness: proxy-safe error path, schema fidelity, protocol floor | yes |
 | 0.1.3 | 2026-10-22 | offline degradation: handshake and tools/list without a Hive | yes |

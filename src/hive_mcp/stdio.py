@@ -56,9 +56,9 @@ try:  # 版本号只认一次装出来的元数据，别再手写一份（0.1.0 
     try:
         __version__ = _pkg_version("memory-hive-mcp")
     except PackageNotFoundError:  # 源码树里直接跑，没有安装元数据
-        __version__ = "0.1.5"
+        __version__ = "0.1.6"
 except ImportError:  # Python < 3.8 之外的兜底
-    __version__ = "0.1.5"
+    __version__ = "0.1.6"
 
 AGENT_ID = os.environ.get("HIVE_AGENT_ID", "")
 AGENT_TOKEN = os.environ.get("HIVE_AGENT_TOKEN", "")

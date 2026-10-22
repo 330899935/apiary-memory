@@ -1,0 +1,17 @@
+.git
+.gitignore
+.github
+tests
+build
+dist
+**/*.egg-info
+**/__pycache__
+**/*.pyc
+**/.DS_Store
+.DS_Store
+*.egg-info
+__pycache__
+server.json
+glama.json
+CHANGELOG.md
+SECURITY.md
