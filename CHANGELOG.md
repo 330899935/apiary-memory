@@ -6,6 +6,63 @@ versions may change configuration.
 
 ---
 
+---
+
+## 0.1.4 — 2026-10-22
+
+Correctness release. Three defects in 0.1.3 could bite a real user; one was mine to
+answer for, and it was found by an independent read-only review of the published package.
+
+**The honest-failure rule did not hold under a proxy.** 0.1.3 promised that an unreachable
+Hive produces an error naming the endpoint and the fix. That held only without a proxy. When
+`http_proxy` was set — routine for Claude Code and Cursor users behind Clash, Surge or a
+corporate proxy — the proxy answered `502 Bad Gateway`, which arrived as `urllib.error.HTTPError`
+and took a different branch that emitted a bare `Hive returned HTTP 502 for tools/call.`
+No endpoint, no App Store link, no way to self-diagnose. Reproduced against a live proxy.
+
+- **Loopback traffic no longer goes through a proxy.** A local service has no business being
+  proxied, and a proxy answering on its behalf erased the actionable part of the message.
+- **Every failure path now carries the same hint**, including `HTTPError`.
+- **Tests are closed against the environment.** They previously inherited `*_proxy`, so
+  "14 tests OK" was only true in some shells. A regression test now asserts the message is
+  identical with and without a proxy — the previous suite passed while the product was broken.
+- **Error text names the platform** (`macOS only for now`) and, when the Hive is up but the
+  caller has no credential, adds a pointer to `HIVE_AGENT_ID` / `HIVE_AGENT_TOKEN`. That stall
+  is more common than a missing app, and the backend explains it in Chinese only.
+
+**`tools.json` was a rewrite, not a mirror.** It was introduced as the single source of truth
+but had no mechanical link to the backend, so it drifted immediately: it advertised a
+`manage.limit` parameter the backend does not have, documented `say.kind` and `say.stage` as
+free text when the backend enforces enums (`update` and `request`, the examples given, are
+both invalid), and invented `maximum`/`minimum` bounds the backend never declared.
+
+- **`initialize` and `tools/list` are now forwarded whenever the Hive is reachable.** Anyone
+  running a Hive sees the real tool surface, constraints and protocol version, so drift is
+  structurally impossible for them. The local answer is a fallback only.
+- **`tools.json` is demoted to a snapshot** and corrected to match: `manage.limit` removed,
+  the `say` enums added, all invented bounds removed.
+- **A recorded backend snapshot now gates CI.** `tests/backend_tools_snapshot.json` holds a
+  real `tools/list` response; `SchemaFidelity` compares names, parameters, enums, required
+  fields and types against it, so a drifting snapshot fails without a running Hive. This
+  matters because **directory crawlers have no Hive — the snapshot is exactly what they index.**
+- `test_server_json_matches_tools_json` used to assert only that a package name appeared
+  somewhere in the JSON. It now compares schemas; a test name larger than its assertions is
+  worse than no test.
+
+**`initialize` was over-claiming a protocol revision.** Offline, the bridge answered whatever
+version the client asked for, up to `2025-06-18`, while the backend implements `2024-11-05`.
+Advertising a capability the backend lacks is the same class of dishonesty as inventing a
+result, which is what the honest-failure rule exists to prevent.
+
+- Offline now answers `2024-11-05` only. With a Hive reachable, its own answer is relayed.
+
+**Documentation**
+
+- README states the **Hive 1.4.5+** floor: `say` and `board` do not exist in 1.4.4 and below.
+  Previously the package claimed six tools with no version requirement, and a 1.4.4 user would
+  have discovered the gap only at call time.
+- This file gains its missing 0.1.3 row, and 0.1.2 is no longer marked `pending publish`.
+
 ## 0.1.3 — 2026-10-22
 
 Behaviour release. Makes the bridge usable — and honest — on a machine where the Hive app is
@@ -87,6 +144,8 @@ First public release.
 
 | Version | Date | Kind | Still installable |
 | --- | --- | --- | --- |
-| 0.1.2 | 2026-10-22 | metadata fix (Registry repository pointer) | pending publish |
+| 0.1.4 | 2026-10-22 | correctness: proxy-safe error path, schema fidelity, protocol floor | yes |
+| 0.1.3 | 2026-10-22 | offline degradation: handshake and tools/list without a Hive | yes |
+| 0.1.2 | 2026-10-22 | metadata fix (Registry repository pointer) | yes |
 | 0.1.1 | 2026-10-21 | metadata + docs | yes |
 | 0.1.0 | 2026-10-06 | first release | yes |

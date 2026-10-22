@@ -3,7 +3,7 @@
   "name": "io.github.330899935/hive-memory",
   "title": "Memory Hive",
   "description": "Local-first memory over MCP. Agents propose; only you confirm. Requires the Hive app.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "websiteUrl": "https://hello-fengchao.com",
   "repository": {
     "url": "https://github.com/330899935/memory-hive-mcp",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "memory-hive-mcp",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "transport": {
         "type": "stdio"
       },

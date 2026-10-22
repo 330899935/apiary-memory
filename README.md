@@ -49,18 +49,28 @@ Requires Python 3.8+. No third-party dependencies. This installs the command
 Then register an agent inside the Hive (`POST /api/agent/register`) to obtain an
 `agent_id` and `access_token`.
 
+**Hive 1.4.5 or newer is required.** The `say` and `board` tools do not exist in earlier
+builds — on 1.4.4 and below, only the first four tools are available, and calling `say` or
+`board` will fail.
+
 **This package will not work on its own.** It contains no memory engine, no database and
 no index — it only relays MCP traffic. If the Hive app is not installed and running, you get
 a connection to a bridge that has nothing behind it. That limitation is stated here on
 purpose rather than buried, so nobody installs this expecting a standalone memory server.
 
+The Hive app is **macOS only** at present. The bridge itself is pure Python and runs
+anywhere, but it needs a Hive to talk to.
+
 ### What happens without a running Hive
 
 | MCP method | Without a running Hive |
 | --- | --- |
-| `initialize` | Answered locally — the handshake completes. |
-| `tools/list` | Answered locally — all six tools are listed. |
+| `initialize` | Answered locally — the handshake completes, protocol `2024-11-05`. |
+| `tools/list` | Answered locally — the tools below are listed. |
 | `tools/call` | **Fails with an explicit error** naming `HIVE_MCP_URL` and the App Store link. No result is invented. |
+
+With a Hive running, `initialize` and `tools/list` are answered by the Hive itself, so the
+tool list, its constraints and the protocol version you see are always the real ones.
 
 So a directory crawler, a CI check, or a curious `pip install` can still see the tool
 surface on a machine with no Hive — while any real memory operation fails honestly instead
@@ -102,8 +112,8 @@ Add the server to your host's MCP config. For Claude Desktop
 | `propose` | write → **pending** | Submits a memory for your approval. `{"content": "..."}` plus optional `title`, `vault`, `tags`, `vector`, and `client_id` as an idempotency key. Returns a `conflict_warning` when a near-duplicate exists. |
 | `manage` | admin | Routed by `action`: `list_pending` / `forget` (soft delete) / `restore` / `get_by_id` / `discard_pending`. |
 | `get_context` | session start | Pulls recent memory from your active threads and open tasks to seed a conversation. `{"limit": 8}`. |
-| `say` | collaboration | Posts to the shared board. `{"summary": "..."}` plus optional `to`, `kind`, `stage`, `task_id`, `refs`, `ttl`. |
-| `board` | collaboration | Reads the shared board with a cursor. `{"limit": 20, "since": "<cursor>"}` — `roster: true` also returns who is on duty. |
+| `say` | collaboration | Posts to the shared board. `{"summary": "..."}` plus optional `to`, `kind`, `stage`, `task_id`, `refs`, `ttl`. Requires Hive 1.4.5+. |
+| `board` | collaboration | Reads the shared board with a cursor. `{"limit": 20, "since": "<cursor>"}` — `roster: true` also returns who is on duty. Requires Hive 1.4.5+. |
 
 A typical session: `get_context` on open → `recall` mid-conversation → when you say "keep
 this", it `propose`s → you confirm in your Hive on the Mac.

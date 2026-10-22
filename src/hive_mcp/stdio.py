@@ -8,27 +8,30 @@ not embed a memory engine. The Hive app on your machine is the single writer;
 this package only relays protocol traffic to it, so there is no cross-process
 write contention and no working-directory dependency.
 
-What runs without a Hive (deliberately, see "Offline behaviour" below)
----------------------------------------------------------------------
-``initialize`` and ``tools/list`` are answered *locally*, from ``tools.json``.
-A client can therefore complete the MCP handshake and discover the tool surface
-on a machine where the Hive app is not installed — which is exactly what an
-automated directory crawler does when it evaluates this package.
+Talk to the Hive first, answer locally only when it is unreachable
+------------------------------------------------------------------
+``initialize``, ``tools/list`` and ``tools/call`` are all forwarded to the Hive
+when it is reachable. The client therefore always sees the tool surface and the
+protocol version the backend *actually* has, instead of a copy that can drift.
 
-``tools/call`` is **not** answered locally. It is forwarded to the Hive, and if
-the Hive is unreachable the call fails with an explicit error naming the
-endpoint and telling the user how to fix it. It never fabricates a successful
-result. Saying "no Hive here" is the honest answer; inventing one would be a lie
-that costs the caller real work.
+When the Hive is unreachable, ``initialize`` and ``tools/list`` fall back to
+answering locally (so that a directory crawler on a clean machine can still
+complete the handshake and enumerate the tools), while ``tools/call`` fails with
+an explicit error. **No result is ever invented.**
+
+``tools.json`` is a *snapshot*, not a second source of truth. It exists only for
+the offline fallback. Anything that changes the backend schema must change it
+too — ``tests/test_bridge.py`` enforces that against a recorded backend snapshot.
 
 Offline behaviour
 -----------------
-| Method              | Without a running Hive            |
-| ------------------- | --------------------------------- |
-| ``initialize``      | answered locally                  |
-| ``tools/list``      | answered locally from tools.json  |
-| ``tools/call``      | forwarded; fails with HTTP 502    |
-| anything else       | forwarded; fails with HTTP 502    |
+| Method                 | Hive unreachable                          |
+| ---------------------- | ----------------------------------------- |
+| ``initialize``         | answered locally, protocol ``2024-11-05`` |
+| ``tools/list``         | answered locally from ``tools.json``      |
+| ``tools/call``         | fails with HTTP 502 + a fixable message   |
+| anything else          | fails with HTTP 502 + a fixable message   |
+| notifications          | swallowed silently (never answered)       |
 
 Credentials are injected via environment variables:
 
@@ -43,6 +46,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -52,40 +56,70 @@ try:  # 版本号只认一次装出来的元数据，别再手写一份（0.1.0 
     try:
         __version__ = _pkg_version("memory-hive-mcp")
     except PackageNotFoundError:  # 源码树里直接跑，没有安装元数据
-        __version__ = "0.1.3"
+        __version__ = "0.1.4"
 except ImportError:  # Python < 3.8 之外的兜底
-    __version__ = "0.1.3"
+    __version__ = "0.1.4"
 
 AGENT_ID = os.environ.get("HIVE_AGENT_ID", "")
 AGENT_TOKEN = os.environ.get("HIVE_AGENT_TOKEN", "")
 MCP_URL = os.environ.get("HIVE_MCP_URL", "http://127.0.0.1:8768/mcp")
 
 SERVER_NAME = "memory-hive-mcp"
+APP_STORE = "https://apps.apple.com/app/id6806992983"
 
-# Protocol revisions this bridge understands. If a client asks for one of these,
-# echo it back; otherwise offer our newest so the client can downgrade itself.
-SUPPORTED_PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
-DEFAULT_PROTOCOL = SUPPORTED_PROTOCOLS[0]
+# Offline we claim only what the backend actually implements. Do not raise this
+# to a version the Hive does not speak: advertising a capability the backend
+# lacks is the same class of dishonesty as inventing a tool result.
+OFFLINE_PROTOCOL = "2024-11-05"
 
-# JSON-RPC standard error codes plus the two MCP-relevant ones.
+# Discovery must not hang. A crawler should get an answer, not a 30s stall.
+DISCOVERY_TIMEOUT = 1.5
+CALL_TIMEOUT = 30.0
+
+# JSON-RPC codes
 PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 INTERNAL_ERROR = -32603
 
 # 502 = "the upstream is not there". Same number whether the Hive is stopped,
-# the port is wrong, or nothing is listening: from here they are one condition.
+# the port is wrong, or a proxy answers on its behalf: one condition.
 UPSTREAM_DOWN = 502
 
 _TOOLS_CACHE = None
 
 
-def load_tools():
-    """Read the tool surface from tools.json — the single source of truth.
+def _is_loopback(url):
+    """True when the endpoint is on this machine.
 
-    Cached after first read. A missing or malformed file is a packaging bug, not
-    a runtime condition, so it raises rather than silently returning ``[]``:
-    an empty ``tools/list`` would look like a healthy server with no tools.
+    Loopback traffic must never go through an HTTP proxy: (a) it is semantically
+    wrong, (b) when a proxy is configured it answers 502 on the proxy's behalf,
+    which used to strip the actionable part off our error message.
+    """
+    try:
+        host = urllib.parse.urlsplit(url).hostname or ""
+    except ValueError:
+        return False
+    return host in ("127.0.0.1", "::1", "localhost", "0.0.0.0") or host.startswith(
+        "127."
+    )
+
+
+def _opener():
+    """Proxy-free opener for loopback, normal opener otherwise."""
+    if _is_loopback(MCP_URL):
+        return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    return urllib.request.build_opener()
+
+
+def load_tools():
+    """Read the offline snapshot of the tool surface.
+
+    This is a fallback, not the source of truth: when the Hive is reachable the
+    backend's own ``tools/list`` is what the client sees. Cached after first read.
+    A missing or malformed file is a packaging bug, so it raises rather than
+    returning ``[]`` — an empty list would look like a healthy server with no
+    tools, which is a lie a caller cannot detect.
     """
     global _TOOLS_CACHE
     if _TOOLS_CACHE is not None:
@@ -111,44 +145,61 @@ def _rpc_error(msg_id, code, message, data=None):
     return {"jsonrpc": "2.0", "id": msg_id, "error": err}
 
 
-def _hive_hint():
+def _hive_hint(reason=""):
     """One-line, actionable explanation of how to make the Hive reachable."""
+    tail = f" ({reason})" if reason else ""
     return (
-        f"Hive not reachable at {MCP_URL}. {SERVER_NAME} is a bridge and ships "
-        "no memory engine of its own, so it needs the Hive app running on the "
-        "same machine. Install it from "
-        "https://apps.apple.com/app/id6806992983, open it, then retry. "
-        "Set HIVE_MCP_URL if your Hive listens somewhere else."
+        f"Hive not reachable at {MCP_URL}{tail}. {SERVER_NAME} is a bridge and "
+        "ships no memory engine of its own, so it needs the Hive app running on "
+        f"the same machine (macOS only for now). Install it from {APP_STORE}, "
+        "open it, then retry. Set HIVE_MCP_URL if your Hive listens elsewhere."
     )
 
 
-def handle_initialize(msg_id, params):
-    """Answer locally: this is pure protocol, the Hive is not involved."""
-    asked = (params or {}).get("protocolVersion")
-    version = asked if asked in SUPPORTED_PROTOCOLS else DEFAULT_PROTOCOL
-    return _rpc_result(
-        msg_id,
+def _auth_hint():
+    """Appended when the Hive is up but the caller has no usable credential.
+
+    This is the most common real-world stall: the app is installed, the user
+    never registered an agent, and the backend replies in Chinese.
+    """
+    return (
+        " No usable agent credential. Register an agent inside the Hive, then set "
+        "HIVE_AGENT_ID and HIVE_AGENT_TOKEN in your MCP host config "
+        "(see the Environment variables table in the README)."
+    )
+
+
+_LOOKS_LIKE_AUTH = ("agent_id", "token", "鉴权", "凭证", "身份", "401", "403")
+
+
+def _upstream_error(payload, code, detail, reason=""):
+    """Uniform, honest failure for anything we could not deliver."""
+    body = _hive_hint(reason)
+    try:
+        text = json.dumps(detail, ensure_ascii=False) if detail is not None else ""
+    except Exception:
+        text = str(detail)
+    if text and any(k in text for k in _LOOKS_LIKE_AUTH):
+        body += _auth_hint()
+    return _rpc_error(
+        payload.get("id"),
+        INTERNAL_ERROR,
+        body,
         {
-            "protocolVersion": version,
-            "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": SERVER_NAME, "version": __version__},
-            # MCP allows an instructions field; keep it short and true.
-            "instructions": (
-                "Local-first memory. This server is a bridge to the Hive app on "
-                "the same machine; it stores nothing itself. Agents can propose "
-                "memories but only the human can confirm them."
-            ),
+            "http_status": code,
+            "upstream": MCP_URL,
+            "method": payload.get("method"),
         },
     )
 
 
-def handle_tools_list(msg_id, _params):
-    """Answer locally from tools.json so discovery works without a Hive."""
-    return _rpc_result(msg_id, {"tools": load_tools()})
+def forward(payload, timeout=CALL_TIMEOUT):
+    """POST the payload to the Hive.
 
-
-def forward(payload):
-    """POST the payload to the Hive. Returns a response dict, or None for 202."""
+    Returns a response dict, or ``None`` for a 202 (notification accepted, no
+    reply expected). On any transport failure returns a ready-to-send JSON-RPC
+    error that names the endpoint and the fix.
+    """
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(MCP_URL, data=body, method="POST")
     req.add_header("Content-Type", "application/json")
@@ -157,7 +208,7 @@ def forward(payload):
     if AGENT_TOKEN:
         req.add_header("X-Hive-Token", AGENT_TOKEN)
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with _opener().open(req, timeout=timeout) as resp:
             if resp.status == 202:
                 return None  # notification: backend accepted, no response needed
             raw = resp.read().decode("utf-8")
@@ -167,36 +218,49 @@ def forward(payload):
     except urllib.error.HTTPError as e:
         if e.code == 202:
             return None
+        # A proxy answering 502 used to fall through to a bare "HTTP 502" with no
+        # endpoint and no fix — exactly the failure mode this error path exists to
+        # prevent. Try the body first (the Hive speaks JSON), then always attach
+        # the actionable hint.
         try:
-            return json.loads(e.read().decode("utf-8"))
+            parsed = json.loads(e.read().decode("utf-8"))
         except Exception:
-            return _rpc_error(
-                payload.get("id"),
-                INTERNAL_ERROR,
-                f"Hive returned HTTP {e.code} for {payload.get('method')}.",
-                {"http_status": e.code, "upstream": MCP_URL},
-            )
-    except Exception as e:  # URLError, socket timeouts, JSON errors, ...
-        return None, e  # caller decides how to phrase this
+            parsed = None
+        if isinstance(parsed, dict) and parsed.get("error"):
+            # The Hive itself answered with a JSON-RPC error: pass it through
+            # verbatim, but add the credential hint when it looks like auth.
+            err = dict(parsed["error"])
+            msg = str(err.get("message", ""))
+            if any(k in msg for k in _LOOKS_LIKE_AUTH) and "HIVE_AGENT_ID" not in msg:
+                err["message"] = msg + _auth_hint()
+            return {"jsonrpc": "2.0", "id": payload.get("id"), "error": err}
+        return _upstream_error(payload, e.code, f"HTTP {e.code}", f"HTTP {e.code}")
+    except Exception as e:  # URLError, socket timeout, JSON decode, ...
+        return _upstream_error(payload, UPSTREAM_DOWN, str(e), str(e))
 
 
-def call_forward(payload):
-    """forward() with the error path made explicit and honest."""
-    outcome = forward(payload)
-    if isinstance(outcome, tuple):  # transport failure
-        _res, exc = outcome
-        return _rpc_error(
-            payload.get("id"),
-            INTERNAL_ERROR,
-            _hive_hint(),
-            {
-                "http_status": UPSTREAM_DOWN,
-                "upstream": MCP_URL,
-                "reason": str(exc),
-                "method": payload.get("method"),
-            },
-        )
-    return outcome
+def _local_initialize(msg_id):
+    return _rpc_result(
+        msg_id,
+        {
+            "protocolVersion": OFFLINE_PROTOCOL,
+            "capabilities": {"tools": {"listChanged": False}},
+            "serverInfo": {"name": SERVER_NAME, "version": __version__},
+            "instructions": (
+                "Local-first memory. This server is a bridge to the Hive app on "
+                "the same machine; it stores nothing itself. Agents can propose "
+                "memories but only the human can confirm them."
+            ),
+        },
+    )
+
+
+def _forwarded_result(msg_id, payload, timeout):
+    """Ask the Hive; return its response dict only if it carries a usable result."""
+    resp = forward(payload, timeout=timeout)
+    if isinstance(resp, dict) and resp.get("result"):
+        return resp
+    return None
 
 
 def main():
@@ -225,19 +289,26 @@ def main():
 
         # Notifications carry no id and must never be answered.
         if msg_id is None and method is not None:
-            if method == "notifications/initialized":
-                continue
-            # Other notifications: let the Hive see them, but stay silent.
-            call_forward(payload)
+            forward(payload, timeout=DISCOVERY_TIMEOUT)  # best effort, stay silent
             continue
 
         try:
             if method == "initialize":
-                resp = handle_initialize(msg_id, payload.get("params"))
+                # Prefer the backend's real handshake; fall back locally so a
+                # clean machine can still connect.
+                resp = _forwarded_result(msg_id, payload, DISCOVERY_TIMEOUT)
+                if resp is None:
+                    resp = _local_initialize(msg_id)
+
             elif method == "tools/list":
-                resp = handle_tools_list(msg_id, payload.get("params"))
+                # Prefer the backend's live tool surface: that is what makes
+                # drift structurally impossible for anyone with a Hive.
+                resp = _forwarded_result(msg_id, payload, DISCOVERY_TIMEOUT)
+                if resp is None:
+                    resp = _rpc_result(msg_id, {"tools": load_tools()})
+
             else:
-                resp = call_forward(payload)
+                resp = forward(payload)
         except Exception as e:
             resp = _rpc_error(
                 msg_id,

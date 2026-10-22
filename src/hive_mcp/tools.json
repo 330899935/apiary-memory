@@ -14,9 +14,7 @@
           "limit": {
             "type": "integer",
             "description": "Maximum number of memories to return.",
-            "default": 10,
-            "minimum": 1,
-            "maximum": 100
+            "default": 10
           },
           "compact": {
             "type": "boolean",
@@ -25,16 +23,22 @@
           },
           "vaults": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Narrow the search to these vaults. Omit to search every vault the agent may read."
           },
           "query_vector": {
             "type": "array",
-            "items": { "type": "number" },
+            "items": {
+              "type": "number"
+            },
             "description": "Precomputed embedding. When supplied, recall uses vector search instead of text search."
           }
         },
-        "required": ["query"]
+        "required": [
+          "query"
+        ]
       }
     },
     {
@@ -57,12 +61,16 @@
           },
           "tags": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Free-form tags for later filtering."
           },
           "vector": {
             "type": "array",
-            "items": { "type": "number" },
+            "items": {
+              "type": "number"
+            },
             "description": "Optional precomputed embedding stored alongside the memory."
           },
           "client_id": {
@@ -70,7 +78,9 @@
             "description": "Idempotency key. Submitting twice with the same key does not create a duplicate."
           }
         },
-        "required": ["content"]
+        "required": [
+          "content"
+        ]
       }
     },
     {
@@ -81,22 +91,23 @@
         "properties": {
           "action": {
             "type": "string",
-            "enum": ["list_pending", "forget", "restore", "get_by_id", "discard_pending"],
+            "enum": [
+              "list_pending",
+              "forget",
+              "restore",
+              "get_by_id",
+              "discard_pending"
+            ],
             "description": "Which administrative operation to run."
           },
           "id": {
             "type": "string",
             "description": "Target memory id. Required for forget, restore, get_by_id and discard_pending."
-          },
-          "limit": {
-            "type": "integer",
-            "description": "Maximum rows to return for list_pending.",
-            "default": 20,
-            "minimum": 1,
-            "maximum": 200
           }
         },
-        "required": ["action"]
+        "required": [
+          "action"
+        ]
       }
     },
     {
@@ -108,9 +119,7 @@
           "limit": {
             "type": "integer",
             "description": "Maximum number of context entries to return.",
-            "default": 8,
-            "minimum": 1,
-            "maximum": 50
+            "default": 8
           }
         }
       }
@@ -131,11 +140,22 @@
           },
           "kind": {
             "type": "string",
-            "description": "Message kind, e.g. update, request, handoff."
+            "enum": [
+              "data",
+              "handoff",
+              "result"
+            ],
+            "description": "Card type. May be omitted when 'stage' is given, in which case it is derived from the stage."
           },
           "stage": {
             "type": "string",
-            "description": "Free-form workflow stage label."
+            "enum": [
+              "start",
+              "handoff",
+              "done",
+              "blocked"
+            ],
+            "description": "Work event: start / handoff / done / blocked. Prefixed onto the body so messages can be filtered and de-duplicated."
           },
           "task_id": {
             "type": "string",
@@ -143,7 +163,9 @@
           },
           "refs": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "References such as file paths, commits or memory ids."
           },
           "ttl": {
@@ -151,7 +173,9 @@
             "description": "Seconds after which the message stops being returned by board."
           }
         },
-        "required": ["summary"]
+        "required": [
+          "summary"
+        ]
       }
     },
     {
@@ -163,9 +187,7 @@
           "limit": {
             "type": "integer",
             "description": "Maximum number of messages to return.",
-            "default": 20,
-            "minimum": 1,
-            "maximum": 200
+            "default": 20
           },
           "since": {
             "type": "string",

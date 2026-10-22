@@ -1,0 +1,206 @@
+{
+  "$comment": "Recorded from a live Hive v1.4.6 /mcp tools/list response. tests/test_bridge.py compares src/hive_mcp/tools.json against this file, so a drifting offline snapshot fails CI without needing a running Hive. Descriptions here are the backend's own (Chinese); the offline snapshot carries English ones, so names/enums/required/type are compared, not text.",
+  "source": {
+    "endpoint": "http://127.0.0.1:8768/mcp",
+    "hive_version": "1.4.6",
+    "recorded_at": "2026-10-22T11:1x+08:00",
+    "method": "tools/list"
+  },
+  "tools": [
+    {
+      "name": "recall",
+      "description": "搜索蜂巢记忆（公开四仓：当前主线/待办执行/参考资料/归档历史）。自然语言召回，返回最相关的记忆条目。这是「读自己流水记忆」的命门入口。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "自然语言查询，如「上次说的那个项目」「半年前那个想法」"
+          },
+          "query_vector": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "可选：查询词的语义向量（触角上云 embedding 算好投来）。提供则走语义召回（本地余弦相似度），比关键词检索更能抓到「内存→容量」这种深语义"
+          },
+          "vaults": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "限定仓库名列表，默认公开四仓（隐私仓不开放给触角）"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "返回条数，默认 10，最大 50"
+          },
+          "compact": {
+            "type": "boolean",
+            "description": "精简返回：只回 id+标题+内容截断，省上下文窗口，默认 true"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "propose",
+      "description": "写入一条记忆到候选区（待用户确认后归巢）。触角只能 propose，不能 self-confirm；确认归巢是用户在观察窗 UI 的动作。自动检测与已有记忆的重复/矛盾并返回冲突警告。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "记忆正文（要记住的内容）"
+          },
+          "title": {
+            "type": "string",
+            "description": "标题，缺省用正文前段"
+          },
+          "vault": {
+            "type": "string",
+            "description": "建议归巢仓库（公开四仓之一），仅作建议，用户确认时可改"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "标签列表"
+          },
+          "client_id": {
+            "type": "string",
+            "description": "幂等键：同一 client_id 重复投喂会被跳过（防重发）"
+          },
+          "vector": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "可选：记忆文本的语义向量（触角上云 embedding 算好投来，瞬时不存储）。提供则随条目存本地，供后续 recall 语义召回"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "manage",
+      "description": "统一管理入口，按 action 路由子命令：list_pending（看候选区）/ forget（软删除到回收站，可恢复）/ restore（从回收站恢复）/ get_by_id（按 id 取单条完整记忆）/ discard_pending（撤回本触角投喂、尚未归巢的候选）。隐私仓条目触角不可碰。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "list_pending",
+              "forget",
+              "restore",
+              "get_by_id",
+              "discard_pending"
+            ],
+            "description": "子命令"
+          },
+          "id": {
+            "type": "string",
+            "description": "记忆 id（get_by_id / forget / restore / discard_pending 用）"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "get_context",
+      "description": "接入开场：一次调用拉「当前主线 + 待办执行」两仓的最近记忆，作为会话上下文底座，不用先问就知道最近在忙啥。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "每仓返回条数，默认 8"
+          }
+        }
+      }
+    },
+    {
+      "name": "say",
+      "description": "在协作台发言（S-20）。触角发言权与主人平等：说给谁看、说了什么，人和其它 AI 都看得见。★ 发言者身份由服务端从你的凭证推导，**传 actor 无效**（防冒充）。干完一段就 say 一句（S-23 干活播报）。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": "string",
+            "description": "发言正文（≤120 字，超了截断）。写「发生了什么」，不写动作流水账"
+          },
+          "to": {
+            "type": "string",
+            "description": "给谁看：master（默认，等人点头）/ 某个 agent_id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "data",
+              "handoff",
+              "result"
+            ],
+            "description": "卡片类型；填了 stage 时可省略（由 stage 推导）"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "start",
+              "handoff",
+              "done",
+              "blocked"
+            ],
+            "description": "干活播报的事件（S-23）：开始/交接/完成/卡住。填了会在正文前加对应前缀，便于筛选与去重"
+          },
+          "task_id": {
+            "type": "string",
+            "description": "可选：这条属于哪个任务（接力图按它聚合）"
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "可选：相关记忆的门牌号"
+          },
+          "ttl": {
+            "type": "integer",
+            "description": "可选：卡片存活秒数，默认 24 小时"
+          }
+        },
+        "required": [
+          "summary"
+        ]
+      }
+    },
+    {
+      "name": "board",
+      "description": "读协作板（S-20/S-21）。返回最近 N 条发言 + **一个游标**（下次带上它，就只看新的）。这是「各自读同一本账」的那一本账 —— 不是推送：你按自己的节拍醒来读一遍即可。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "返回条数，默认 20，最大 100"
+          },
+          "since": {
+            "type": "string",
+            "description": "可选：上次返回的 cursor。带上则只返回它之后的新内容"
+          },
+          "roster": {
+            "type": "boolean",
+            "description": "同时返回值班表（谁在岗、在干什么），默认 false"
+          }
+        }
+      }
+    }
+  ]
+}
