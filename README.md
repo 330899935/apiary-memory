@@ -1,186 +1,240 @@
-# memory-hive-mcp
+# Memory Hive MCP
 
-<!-- mcp-name: io.github.330899935/hive-memory -->
+**Local-first personal memory for AI agents, over MCP.** Your agents can search what you have
+confirmed and propose what they think you should keep; **only you can confirm it.** Everything
+lives in one file on your own disk, and nothing is sent anywhere.
 
-**Local-first memory your AI agents share over MCP. Agents propose; only you confirm.**
-
-`memory-hive-mcp` is a thin [Model Context Protocol](https://modelcontextprotocol.io) server.
-It lets any MCP-capable host (Claude Desktop, Cursor, and friends) read and write *your*
-memory — stored on *your* computer, by *your* Hive, never uploaded anywhere.
-
-> **This package contains no memory engine.** It relays MCP protocol traffic to the Hive app
-> already running on your machine (`127.0.0.1:8768`). Your data never passes through this
-> bridge as stored state, and nothing leaves your computer.
-
-## The problem it solves
-
-Every major assistant now has cross-session memory, so "my AI has no memory" is no longer the
-problem. The problem is what replaced it: **memory is siloed per vendor, in formats you cannot
-export, governed by policies you did not set.**
-
-| | Without Hive | With Hive |
-| --- | --- | --- |
-| Where memory lives | Each vendor's servers | A file on your machine |
-| Switching clients | Start over from zero | Same memory, any MCP client |
-| Who can write | The model, silently | The model can only `propose`; you confirm |
-| Export | A "delete everything" button | It is already on your disk |
-| Using 3 assistants | 3 partial memories, none yours | 1 memory, 3 readers |
-
-**Who this is for:** people who use two or more AI assistants seriously enough to be annoyed by
-re-introducing themselves. With one assistant, your vendor's built-in memory is probably enough.
-
-## Install
+It runs on its own. A working SQLite memory store ships inside this package — no account, no
+cloud, no daemon, no dependencies.
 
 ```bash
 pip install memory-hive-mcp
 ```
 
-Requires Python 3.8+. No third-party dependencies. This installs the command
-**`memory-hive-mcp`**.
+---
 
-(Note: an unrelated project owns the plain `hive-mcp` name on PyPI — that is not us.)
+## What you get without the app
 
-## Prerequisite: a running Hive
+A complete, if modest, memory server. On a machine with nothing else installed:
 
-`memory-hive-mcp` talks to the Hive on your own machine. Get it from the Mac App Store:
-
-**https://apps.apple.com/app/id6806992983**
-
-Then register an agent inside the Hive (`POST /api/agent/register`) to obtain an
-`agent_id` and `access_token`.
-
-**Hive 1.4.5 or newer is required.** The `say` and `board` tools do not exist in earlier
-builds — on 1.4.4 and below, only the first four tools are available, and calling `say` or
-`board` will fail.
-
-**This package will not work on its own.** It contains no memory engine, no database and
-no index — it only relays MCP traffic. If the Hive app is not installed and running, you get
-a connection to a bridge that has nothing behind it. That limitation is stated here on
-purpose rather than buried, so nobody installs this expecting a standalone memory server.
-
-The Hive app is **macOS only** at present. The bridge itself is pure Python and runs
-anywhere, but it needs a Hive to talk to.
-
-### What happens without a running Hive
-
-| MCP method | Without a running Hive |
+| Call | What happens |
 | --- | --- |
-| `initialize` | Answered locally — the handshake completes, protocol `2024-11-05`. |
-| `tools/list` | Answered locally — the tools below are listed. |
-| `tools/call` | **Fails with an explicit error** naming `HIVE_MCP_URL` and the App Store link. No result is invented. |
+| `initialize` | answered locally, protocol `2024-11-05` |
+| `tools/list` | answered locally, six tools |
+| `propose` | **writes to a real database** on your disk |
+| `recall` | **searches that database** and returns ranked entries |
+| `get_context` | a digest of what you confirmed most recently |
+| `manage` | read one entry, list what is pending, forget, restore |
+| `say` / `board` | a shared message board for coordinating several agents |
 
-With a Hive running, `initialize` and `tools/list` are answered by the Hive itself, so the
-tool list, its constraints and the protocol version you see are always the real ones.
+Storage is SQLite at `~/.memory-hive/hive.db` by default. Search is lexical — character bigrams
+for Chinese, words for Latin script — so it ranks well when the words overlap and finds nothing
+when they do not. There are no embeddings and no vector index. Every response says
+`"mode": "local"` so you can always tell which engine answered.
 
-So a directory crawler, a CI check, or a curious `pip install` can still see the tool
-surface on a machine with no Hive — while any real memory operation fails honestly instead
-of pretending to succeed. A fabricated empty result would be worse than an error: the
-caller would conclude the user's memory is empty.
+**Without the app, the database is plain SQLite: it is not encrypted.** That is stated here
+rather than discovered later — see [Honest limits](#honest-limits).
 
-## Configure your MCP host
+## What the app adds
 
-Add the server to your host's MCP config. For Claude Desktop
-(`~/Library/Application Support/Claude/claude_desktop_config.json`):
+[Memory Hive for macOS](https://apps.apple.com/app/id6806992983) is the same design with the
+expensive parts built: eight vaults with four of them locked behind a PIN (Argon2id-wrapped key,
+AES-256 at rest), a daily evolution log, multi-agent identity management, and a UI for reading
+and confirming. It also answers MCP itself, with richer ranking.
+
+If the app is running, this package uses it and leaves the local file alone. If it is not, the
+local store answers. You do not have to choose up front:
+
+| `HIVE_MODE` | Behaviour |
+| --- | --- |
+| `auto` (default) | Ask the app. Use the local store **only if the app is unreachable.** |
+| `local` | Never touch the network. Always use the local store. |
+| `remote` | Only the app. A connection failure is an error, not a reroute. |
+
+One rule holds in every mode: **if the app is running and answers with an error, that error is
+returned unchanged.** Falling back on a refusal would write your memory into a second database
+while your client believed it had reached the app. Silent data forking is worse than an error
+message, so a reply from the app is final. The fallback fires on a connection failure, and on
+nothing else.
+
+## Install
+
+```bash
+pip install memory-hive-mcp      # the server: memory-hive-mcp
+                                 # the human's CLI: memory-hive-mcp-cli
+```
+
+Python 3.8 or newer. There is nothing else to install — the package uses only the standard
+library, and `sqlite3` is part of it.
+
+From a checkout:
+
+```bash
+git clone https://github.com/330899935/memory-hive-mcp
+cd memory-hive-mcp
+PYTHONPATH=src python -m hive_mcp.stdio
+```
+
+## Connect a client
+
+Any MCP host that can run a stdio command will work. The minimum is the command; everything else
+is optional.
+
+**Claude Desktop** — `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
-    "hive-memory": {
+    "memory-hive": {
       "command": "memory-hive-mcp",
-      "env": {
-        "HIVE_AGENT_ID": "your-agent-id",
-        "HIVE_AGENT_TOKEN": "your-access-token"
-      }
+      "env": { "HIVE_MODE": "local" }
     }
   }
 }
 ```
 
-### Environment variables
+**Cursor** — `~/.cursor/mcp.json`, same `mcpServers` shape.
 
-| Name | Required | Description |
-| --- | --- | --- |
-| `HIVE_AGENT_ID` | yes | Agent id issued by your own Hive. |
-| `HIVE_AGENT_TOKEN` | yes | Access token issued when the agent was registered. Keep it secret. |
-| `HIVE_MCP_URL` | no | Hive MCP endpoint. Defaults to `http://127.0.0.1:8768/mcp`. |
+**Any host that only speaks HTTP** — start the app and point it at `http://127.0.0.1:8768/mcp`
+with the headers `X-Hive-Agent` and `X-Hive-Token`. This package is the stdio path; the HTTP
+endpoint belongs to the app.
+
+## Prerequisite
+
+**None, for the local store** — install the package and it works. A running app is a prerequisite
+only for the app's own features: encrypted vaults, the evolution log, and multi-agent identity.
+If you want those, install [the Hive app](https://apps.apple.com/app/id6806992983) (macOS,
+version **1.4.5 or newer**) and leave `HIVE_MODE` at `auto`.
 
 ## The six tools
 
-Every tool declares its MCP annotations, so a host knows the safety profile before reading the
-description: `recall`, `get_context` and `board` are read-only; `propose` and `manage` are not,
-and neither is marked destructive (`manage` reverses everything except `discard_pending`).
-None of them reach the open internet — the bridge only talks to your local Hive.
+The six tools are the whole surface. They are the same six whether the app or the local store
+answers; only the ranking behind them differs.
 
-| Tool | Direction | What it does |
+| Tool | Kind | What it is for |
 | --- | --- | --- |
-| `recall` | read | Semantic search over confirmed memory. `{"query": "...", "limit": 10, "compact": true}` — optional `vaults` narrows the search, `query_vector` switches to embedding recall. Use it for a specific question; use `get_context` at session start instead, and `manage list_pending` to review what is still unapproved. |
-| `propose` | write → **pending** | Submits a memory for your approval. `{"content": "..."}` plus optional `title`, `vault`, `tags`, `vector`, and `client_id` as an idempotency key. Returns a `conflict_warning` when a near-duplicate exists. **A success response means queued, not stored** — it stays pending until you accept it. |
-| `manage` | admin | Routed by `action`: `list_pending` / `forget` (soft delete, reversible with `restore`) / `restore` / `get_by_id` / `discard_pending` (the only irreversible action). Addressed by id or queue state — to search by topic, use `recall`. |
-| `get_context` | session start | Pulls recent memory from your active threads and open tasks to seed a conversation. `{"limit": 8}`. Recency-based, not query-based; for a specific question use `recall`. |
-| `say` | collaboration | Posts to the shared board. `{"summary": "..."}` plus optional `to`, `kind` (`data`/`handoff`/`result`), `stage` (`start`/`handoff`/`done`/`blocked`), `task_id`, `refs`, `ttl`. Requires Hive 1.4.5+. To read the board, use `board`. |
-| `board` | collaboration | Reads the shared board with a cursor. `{"limit": 20, "since": "<cursor>"}` — `roster: true` also returns who is on duty. Messages expire, so an empty result may mean they aged out. Requires Hive 1.4.5+. |
+| `recall` | read | Search confirmed memory by topic. `{"query": "..."}` plus optional `limit`, `vaults`, `compact`. |
+| `propose` | write | Submit a memory for the human to approve. Lands in a queue; changes no confirmed memory. |
+| `manage` | read/write | Address one entry: `list_pending`, `get_by_id`, `forget`, `restore`, `discard_pending`. |
+| `get_context` | read | A short digest of recent confirmed memory, to seed a conversation. |
+| `say` | write | Post to the shared board so other agents see what was done or handed over. |
+| `board` | read | Read the board, optionally only what arrived since your last cursor. |
 
-A typical session: `get_context` on open → `recall` mid-conversation → when you say "keep
-this", it `propose`s → you confirm in your Hive on the Mac.
+Two properties are worth stating plainly, because they are the product:
 
-## A shared ledger, not just a shared store
+- **`propose` succeeding means "queued", not "stored".** `recall` will not return it until a
+  human confirms it.
+- **`manage` has no `approve` action.** There is no path from an agent to a confirmed memory.
+  That is not an omission; it is the design.
 
-`say` and `board` make the Hive something more than a memory table: a place where several
-agents and one human keep the same ledger.
+## Confirming what agents propose
 
-An agent posts what it just finished (`say`); another picks it up on its own schedule
-(`board` with a cursor) — no push, no waking anyone up, no orchestrator in the middle.
-**Identity comes from the credential, not from a field the caller can set**, so one agent
-cannot speak as another, and the human sees every hand-off in the same thread.
+Agents propose. You confirm. The confirmation lives in a terminal, in a command you have to
+type — deliberately not a tool an agent can call.
 
-## Your agent can propose. It cannot decide.
+```bash
+memory-hive-mcp-cli list                  # what is waiting
+memory-hive-mcp-cli show <id>             # read one in full
+memory-hive-mcp-cli approve <id>          # confirm it, or --all
+memory-hive-mcp-cli reject <id>           # drop it for good
+memory-hive-mcp-cli search "deploy key"   # search confirmed memory
+memory-hive-mcp-cli forget <id>           # soft delete, reversible
+memory-hive-mcp-cli restore <id>          # undo forget
+memory-hive-mcp-cli stats                 # counts and the database path
+memory-hive-mcp-cli export --out dump.json
+memory-hive-mcp-cli path
+```
 
-This is the design point that separates this server from a memory cache.
+`--db <path>` on any command points at a different database. `HIVE_DB` does the same from the
+environment.
 
-**An agent can `propose` a memory, but it cannot confirm one.** What it writes lands in a
-pending queue and stays there until *you* accept it inside your own Hive. There is no
-`self-confirm`, no silent background write, no path by which a model quietly decides what
-is true about you.
+## Where your memory lives
 
-Memory is partitioned into vaults, and the boundary is enforced by the Hive — checked
-server-side, not promised by a prompt:
+`~/.memory-hive/hive.db`, unless `HIVE_DB` says otherwise. One SQLite file; copy it to back it
+up, delete it to start over.
 
-| Agent type | Public vaults | Private vaults |
+The board keeps its messages in the same file and does not expire them unless a `ttl` was given,
+so there is only ever one thing to back up.
+
+## How search works, and what it does not do
+
+Chinese text is indexed as single characters plus overlapping character bigrams; Latin text as
+words. A query is scored by how much of it the entry covers, then nudged by recency — a 10%
+multiplier, enough to break ties and not enough to overturn relevance.
+
+This is a ranker, not an understander.
+
+- **Scores are relative.** `0.8` means "closer than `0.4` for this query", not "80% confident".
+  They are not comparable across queries.
+- **No semantic recall.** Ask about "money" and an entry that only says "invoice" will not be
+  found. Related-word coverage needs an embedder; this package has no dependencies and does not
+  pretend otherwise.
+- **A miss is reported as a miss.** When nothing matches, `recall` says so and mentions how many
+  entries are awaiting confirmation, rather than returning a plausible neighbour.
+
+## Configuration
+
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| Cloud agent (`mcp` / `mobile`) | ✅ open | 🔒 sealed |
-| Local agent (non-cloud) | ✅ open | ✅ open |
+| `HIVE_MODE` | `auto` | `auto`, `local`, or `remote` — see the table above |
+| `HIVE_DB` | `~/.memory-hive/hive.db` | Where the local database lives |
+| `HIVE_MCP_URL` | `http://127.0.0.1:8768/mcp` | The app's endpoint |
+| `HIVE_AGENT_ID` | — | Agent id from the app; only for calls the app serves |
+| `HIVE_AGENT_TOKEN` | — | Access token from the app; only for calls the app serves |
 
-Agents missing from the registration table are sealed by default. A private vault entry is
-not readable, deletable, or restorable by an agent that is not allowed to see it.
+`HIVE_AGENT_ID` and `HIVE_AGENT_TOKEN` are **not** required to use the local store. They are
+read straight from the environment and never written to disk by this package.
 
-## Why a bridge, not a bundle
+## Honest limits
 
-Your memory should have exactly one writer: the Hive on your machine. This server therefore
-speaks protocol and nothing else — no data files are opened, no state is cached, no engine is
-duplicated. That keeps your memory single-sourced, local, and under your control.
+Written down because a memory tool that oversells itself is worse than one that does less.
 
-## Status
+1. **The local store is not encrypted.** Plain SQLite. Anyone who can read your home directory
+   can read it. The app's vaults are the encrypted option, and `stats` reports
+   `"encrypted": false` instead of leaving you to find out.
+2. **No semantic search**, as above.
+3. **One writer at a time.** WAL mode lets the CLI confirm while a server is connected, but this
+   is a personal memory file, not a multi-host service. Do not point two machines at one
+   database over a network share.
+4. **The board is coordination, not memory.** Messages are for hand-offs between agents; they
+   are not searchable with `recall`.
+5. **The app is macOS only.** The local store is not — it is pure Python.
 
-Alpha (`0.x`). The wire protocol is stable; configuration and tool signatures may still change.
-See [CHANGELOG.md](CHANGELOG.md) for what changed between versions.
+## Troubleshooting
 
-**Platforms.** The Hive app (the memory engine this bridge talks to) currently ships for
-**macOS** — [App Store](https://apps.apple.com/app/id6806992983). Windows and Linux builds are
-in progress; the bridge itself is pure Python and runs anywhere, but it needs a Hive to talk to.
+**"no confirmed memory matched this query" with entries pending.** Correct behaviour. Confirm
+them: `memory-hive-mcp-cli list`, then `approve`.
 
-**No benchmarks.** We deliberately do not publish retrieval benchmarks. On a retrieval
-leaderboard we would lose to purpose-built vector stores, and we are not making that claim.
-What we do claim is narrower and checkable: the data stays on your machine, and the write
-authority stays with you.
+**A call fails with a message about `HIVE_AGENT_ID`.** The app answered and refused the
+credential. The call did **not** fall back to the local store, on purpose. Register an agent in
+the app and set both variables, or set `HIVE_MODE=local` if you meant to use the local file.
 
-## Links
+**"Hive app not reachable ... and HIVE_MODE=remote forbids the local fallback".** You asked for
+the app only and it is not running. Start it, or drop `HIVE_MODE=remote`.
 
-- Repository: https://github.com/330899935/memory-hive-mcp
-- Project home: https://hello-fengchao.com
-- MCP integration docs: https://hello-fengchao.com/mcp.html
-- Package: https://pypi.org/project/memory-hive-mcp/
-- Security policy: [SECURITY.md](SECURITY.md)
+**Where did my memory go?** `memory-hive-mcp-cli stats` prints the database path. If `HIVE_MODE`
+is `auto` and the app is running, the app has been answering — the local file is untouched by
+design.
+
+## Development
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests -v
+```
+
+The suite needs no running app and no network: it stands up its own fake backend where a real
+response is required, and points `HIVE_DB` at a temporary file so a test never touches a real
+memory database.
+
+Layout:
+
+```
+src/hive_mcp/store.py   the memory engine (SQLite, stdlib only)
+src/hive_mcp/stdio.py   the MCP server: routing, envelopes, the app bridge
+src/hive_mcp/cli.py     the human's half: review and confirm
+src/hive_mcp/tools.json the tool surface snapshot for the offline path
+```
 
 ## License
 
-MIT
+MIT. Your memory file is yours; nothing here phones home.

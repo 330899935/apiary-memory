@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memory-hive-mcp"
-version = "0.1.6"
-description = "Local-first memory your AI agents share over MCP. Agents propose; only you confirm."
+version = "0.1.7"
+description = "Local-first memory your AI agents share over MCP. Ships a working SQLite memory store; agents propose, only you confirm."
 readme = "README.md"
 requires-python = ">=3.8"
 license = "MIT"
@@ -15,7 +15,9 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Operating System :: MacOS",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Topic :: Database",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = []
@@ -29,6 +31,9 @@ Changelog = "https://github.com/330899935/memory-hive-mcp/blob/main/CHANGELOG.md
 
 [project.scripts]
 memory-hive-mcp = "hive_mcp.stdio:main"
+# Confirming a proposal is a human action, so it gets its own command and is
+# deliberately absent from the MCP tool surface.
+memory-hive-mcp-cli = "hive_mcp.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

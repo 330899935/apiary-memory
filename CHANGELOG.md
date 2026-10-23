@@ -12,6 +12,116 @@ versions may change configuration.
 
 ---
 
+## 0.1.7 — 2026-10-23
+
+**This release gives the package a memory engine of its own.** It is a behaviour change
+and it is not cosmetic, so the reason comes first.
+
+### Why
+
+Glama declined to list 0.1.6. Their reason, in full:
+
+> The README describes this repository as a thin bridge that relays MCP traffic to the
+> proprietary Hive app running locally. It explicitly states the package contains no memory
+> engine and will not work standalone, and that MCP methods like initialize/tools/list are
+> answered by the Hive app itself. The actual MCP server/tool implementation therefore lives
+> in the closed-source Hive app, not in this repository.
+
+That is a fair reading of what we wrote. The README said "this package contains no memory
+engine" and "this package will not work on its own", and the `Dockerfile` said outright that
+`tools/call` fails inside a container. A directory that lists servers for people to try is
+entitled to refuse one that cannot answer a single call on a clean machine. Rewriting the
+description would not have changed any of that.
+
+So the gap was closed in code rather than in prose.
+
+### Added: `hive_mcp.store`
+
+A SQLite database on the user's own disk. Standard library only — no dependencies, no
+daemon, no embeddings, no native extensions.
+
+- `propose` writes a row in the `pending` state.
+- The human confirms with `memory-hive-mcp-cli approve <id>`, in a terminal, out of band.
+- `recall` searches `confirmed` rows only.
+
+Everything else has a local implementation too: `get_context` (recent digest), `manage`
+(`list_pending` / `get_by_id` / `forget` / `restore` / `discard_pending`, matching the existing
+action names and their reversibility guarantees), `say` and `board` (a shared message board
+with cursors, expiry and an optional roster).
+
+Search is deliberately unfashionable: Chinese is indexed as single characters plus overlapping
+bigrams, Latin as words, scored by coverage and then nudged by recency. A segmenter would be a
+20 MB dependency in a package whose promise is no dependencies; a vector index would need an
+embedder. The README states plainly that this ranks, and does not understand, and that scores
+are relative per query rather than probabilities.
+
+### The routing rule, and why it is the important part
+
+`HIVE_MODE` decides where a call runs:
+
+| value | behaviour |
+| --- | --- |
+| `auto` (default) | ask the Hive app; use the local store **only if the app is unreachable** |
+| `local` | never touch the network |
+| `remote` | the app only; a connection failure is an error, not a reroute |
+
+Under `auto`, the fallback fires on a connection failure and on nothing else. If the app is
+running and answers with an error — no agent credential, a bad argument — that error is returned
+unchanged. Silently retrying against the local database would write the user's memory into a
+second store that nothing displays, while their client believed it had reached the app. Silent
+data forking is worse than any error message. `OfflineBehaviour.test_auto_mode_does_not_fall_back_when_the_app_answers`
+stands up a backend that refuses exactly the way the real one does, and asserts that the local
+database was never created.
+
+### Changed behaviour — read this if you wrote against 0.1.6
+
+**`tools/call` no longer fails when the app is absent.** Through 0.1.6 an offline call returned
+JSON-RPC error `-32603` with HTTP status 502 in `error.data`. It now returns a real result from
+the local store, tagged `"mode": "local"`. Code that treated "offline" as "always an error"
+needs updating; two tests that pinned the old contract were rewritten to pin the new one rather
+than deleted.
+
+The failure path still exists under `HIVE_MODE=remote`, and its message still names the endpoint
+and the fix — that behaviour is unchanged.
+
+### Added: `memory-hive-mcp-cli`
+
+```
+list | show <id> | approve <id>... [--all] | reject <id>... |
+search <query> | forget <id>... | restore <id>... | stats | export | path
+```
+
+Confirmation is not in the MCP tool surface, here or upstream, and that has not changed. An
+agent can only propose. The CLI is how the person opens the gate — deliberately a terminal
+command they have to type, not a button an agent can reach. `--db` overrides the database path;
+`HIVE_DB` does the same from the environment.
+
+### Honest limits, stated here as well as in the README
+
+- The local store is **plain SQLite**. It is not encrypted. The app's vaults (Argon2id-wrapped
+  key, AES-256 at rest) remain the only encrypted option, and the local store says
+  `"encrypted": false` in `stats` rather than leaving it to be discovered.
+- No embeddings, no semantic recall. A query with no lexical overlap finds nothing, and the
+  response says so instead of returning a plausible neighbour.
+- Every local response carries `"mode": "local"` so a caller can always tell which engine
+  answered.
+
+### Fixed
+
+- **Version reporting in a source checkout.** `importlib.metadata` describes what pip installed,
+  not what is on `sys.path`. Editing a checkout beside an older installed copy reported the
+  older version. A checkout now reads its own `pyproject.toml`, and
+  `NoDrift.test_version_agrees_across_files` compares the runtime value instead of only
+  the literals.
+- **Tests were not closed against the environment.** `_clean_env` inherited `HIVE_MODE` and a
+  real `HIVE_DB` from the runner's shell. Both are now overridden with a temporary database
+  removed at exit, so the suite cannot read or write a developer's memory.
+
+### Not changed
+
+`tools.json`, the six tool names, every parameter and enum, and all descriptions. The surface a
+client sees is identical; only the engine behind it is new.
+
 ## 0.1.6 — 2026-10-22
 
 Presentation release, aimed at directory crawlers. No behavioural change to the bridge.

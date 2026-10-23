@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.330899935/hive-memory",
   "title": "Memory Hive",
-  "description": "Local-first memory over MCP. Agents propose; only you confirm. Requires the Hive app.",
-  "version": "0.1.6",
+  "description": "Local-first memory over MCP. Ships a working SQLite memory store, so it runs standalone. Agents propose; only you confirm. The optional Hive app adds encrypted vaults.",
+  "version": "0.1.7",
   "websiteUrl": "https://hello-fengchao.com",
   "repository": {
     "url": "https://github.com/330899935/memory-hive-mcp",
@@ -13,28 +13,44 @@
     {
       "registryType": "pypi",
       "identifier": "memory-hive-mcp",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
-          "name": "HIVE_AGENT_ID",
-          "description": "Agent id issued by your own Hive (POST /api/agent/register). The Hive app must be running on the same machine.",
+          "name": "HIVE_MODE",
+          "description": "auto (default) asks the Hive app and falls back to the local store only when the app is unreachable; local never touches the network; remote refuses to fall back.",
           "format": "string",
-          "isRequired": true,
+          "isRequired": false,
+          "isSecret": false,
+          "default": "auto"
+        },
+        {
+          "name": "HIVE_DB",
+          "description": "Path to the local memory database. Defaults to ~/.memory-hive/hive.db. Only used when the local store answers.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "~/.memory-hive/hive.db"
+        },
+        {
+          "name": "HIVE_AGENT_ID",
+          "description": "Agent id issued by your own Hive app. Only needed for calls the app serves (HIVE_MODE=auto with the app running, or remote). Not required to use the local store.",
+          "format": "string",
+          "isRequired": false,
           "isSecret": false
         },
         {
           "name": "HIVE_AGENT_TOKEN",
-          "description": "Access token issued by your own Hive when the agent is registered.",
+          "description": "Access token issued by your own Hive app when the agent is registered. Only needed for calls the app serves.",
           "format": "string",
-          "isRequired": true,
+          "isRequired": false,
           "isSecret": true
         },
         {
           "name": "HIVE_MCP_URL",
-          "description": "Hive MCP endpoint. Defaults to http://127.0.0.1:8768/mcp",
+          "description": "Hive app MCP endpoint. Defaults to http://127.0.0.1:8768/mcp",
           "format": "string",
           "isRequired": false,
           "isSecret": false,

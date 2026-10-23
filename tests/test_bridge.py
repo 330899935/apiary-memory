@@ -3,8 +3,11 @@
 Four groups, each pinning a contract that has already been broken once:
 
 ``OfflineBehaviour``
-    What a crawler sees on a machine with no Hive. The handshake and tool
-    discovery must work; a real tool call must fail loudly, never invent a result.
+    What a machine with no Hive app gets. The handshake and tool discovery must
+    work, and since 0.1.7 a real tool call must really store and retrieve — the
+    package carries its own engine. What must never happen is inventing a
+    result, so the honest-failure rule is still pinned, under ``HIVE_MODE=remote``
+    where falling back would be wrong.
 
 ``ProxyEnvironment``
     2026-10-22 regression: with an HTTP proxy in the environment, a loopback
@@ -22,12 +25,16 @@ Four groups, each pinning a contract that has already been broken once:
     agree. Version strings must agree too (0.1.0 once drifted from its own package).
 """
 
+import atexit
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
+import uuid
 from pathlib import Path
 
 PKG_DIR = Path(__file__).resolve().parent.parent / "src" / "hive_mcp"
@@ -39,6 +46,17 @@ EXPECTED_TOOLS = ["recall", "propose", "manage", "get_context", "say", "board"]
 
 # A port nothing listens on: stands in for "Hive not installed".
 DEAD = "http://127.0.0.1:59999/mcp"
+
+# Since 0.1.7 the bridge owns a memory database. A test must never touch the
+# developer's real one, and must not inherit a HIVE_MODE the runner happens to
+# have exported - a test that passes only in the author's shell is not a test.
+_TEST_DB_DIR = tempfile.mkdtemp(prefix="hive-test-")
+atexit.register(lambda: shutil.rmtree(_TEST_DB_DIR, ignore_errors=True))
+
+
+def _fresh_db():
+    """A path guaranteed empty, so tests cannot see each other's writes."""
+    return os.path.join(_TEST_DB_DIR, uuid.uuid4().hex + ".db")
 
 
 def _clean_env(extra=None):
@@ -52,6 +70,8 @@ def _clean_env(extra=None):
             env.pop(key, None)
     env.pop("HIVE_AGENT_ID", None)
     env.pop("HIVE_AGENT_TOKEN", None)
+    env.pop("HIVE_MODE", None)
+    env.setdefault("HIVE_DB", _fresh_db())
     env["PYTHONPATH"] = str(PKG_DIR.parent)
     if extra:
         env.update(extra)
@@ -144,21 +164,214 @@ class OfflineBehaviour(unittest.TestCase):
                 for req in schema.get("required", []):
                     self.assertIn(req, schema["properties"])
 
-    def test_tools_call_fails_loudly_without_hive(self):
-        """The honest-failure rule: never fabricate a successful tool result."""
+    def test_tools_call_really_stores_and_retrieves_without_app(self):
+        """0.1.7: a machine without the app is no longer a dead end.
+
+        Until 0.1.6 this server could enumerate six tools and run none of them
+        off-app, which is precisely why an MCP directory refused to list it. The
+        contract now: propose writes to a real database, the human confirms, and
+        recall finds the entry. Verified end to end rather than by inspection.
+        """
+        db = _fresh_db()
+        out, _proc = run_bridge(
+            [
+                {
+                    "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                    "params": {
+                        "name": "propose",
+                        "arguments": {
+                            "content": "the deploy key rotates on the first Monday",
+                            "title": "deploy key",
+                        },
+                    },
+                }
+            ],
+            {"HIVE_MCP_URL": DEAD, "HIVE_DB": db},
+        )
+        self.assertTrue(out, "no output from the bridge")
+        resp = json.loads(out[0])
+        self.assertIn("result", resp, f"propose must work offline, got {resp}")
+        payload = json.loads(resp["result"]["content"][0]["text"])
+        self.assertEqual(payload["state"], "pending")
+        self.assertEqual(payload["mode"], "local")
+        mem_id = payload["id"]
+
+        # Unconfirmed entries must not be searchable: that is the whole point of
+        # the gate, and it is what makes "only you confirm" true rather than polite.
+        before = one(
+            [{
+                "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                "params": {"name": "recall", "arguments": {"query": "deploy key"}},
+            }],
+            {"HIVE_MCP_URL": DEAD, "HIVE_DB": db},
+        )
+        found = json.loads(before["result"]["content"][0]["text"])
+        self.assertEqual(found["total"], 0, f"pending entry leaked into recall: {found}")
+
+        # The human confirms, out of band, with the CLI only.
+        sys.path.insert(0, str(PKG_DIR.parent))
+        from hive_mcp.store import Store  # noqa: E402  (test-local import)
+
+        store = Store(db)
+        try:
+            approved = store.approve(ids=[mem_id])
+        finally:
+            store.close()
+        self.assertEqual(approved, [mem_id])
+
+        after = one(
+            [{
+                "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                "params": {"name": "recall", "arguments": {"query": "deploy key"}},
+            }],
+            {"HIVE_MCP_URL": DEAD, "HIVE_DB": db},
+        )
+        hit = json.loads(after["result"]["content"][0]["text"])
+        self.assertEqual(hit["total"], 1, f"confirmed entry not found: {hit}")
+        self.assertEqual(hit["results"][0]["id"], mem_id)
+
+    def test_remote_mode_fails_loudly_instead_of_falling_back(self):
+        """The honest-failure rule, kept for the mode where it still applies.
+
+        ``HIVE_MODE=remote`` means the caller wants the app and nothing else. A
+        silent fallback there would put data in a database the caller did not
+        ask for.
+        """
         resp = one(
             [{
                 "jsonrpc": "2.0", "id": 4, "method": "tools/call",
                 "params": {"name": "recall", "arguments": {"query": "x"}},
             }],
-            {"HIVE_MCP_URL": DEAD},
+            {"HIVE_MCP_URL": DEAD, "HIVE_MODE": "remote"},
         )
-        self.assertIn("error", resp, f"tools/call must error offline, got {resp}")
+        self.assertIn("error", resp, f"tools/call must error in remote mode, got {resp}")
         err = resp["error"]
         self.assertEqual(err["data"]["http_status"], 502)
         # The message must name the endpoint AND the fix, not just say "failed".
         self.assertIn("127.0.0.1:59999", err["message"])
-        self.assertIn("apps.apple.com", err["message"])
+        self.assertIn("HIVE_MODE=local", err["message"])
+
+    def test_auto_mode_does_not_fall_back_when_the_app_answers(self):
+        """A refusal from the app is final; only silence justifies the fallback.
+
+        This is the one routing rule that must not be relaxed. If the app is up
+        and says "no agent credential", retrying against the local store would
+        split the user's memory across two databases, one of which nothing
+        displays. The test stands up a backend that refuses the way the real one
+        does, then asserts the error came back and the local store stayed empty.
+        """
+        import http.server
+        import threading
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                self.rfile.read(length)
+                body = json.dumps({
+                    "jsonrpc": "2.0", "id": 1,
+                    "error": {"code": -32001, "message": "missing agent_id + token"},
+                }).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        port = server.server_address[1]
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        db = _fresh_db()
+        try:
+            resp = one(
+                [{
+                    "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                    "params": {
+                        "name": "propose",
+                        "arguments": {"content": "must not be written locally"},
+                    },
+                }],
+                {
+                    "HIVE_MCP_URL": "http://127.0.0.1:%d/mcp" % port,
+                    "HIVE_MODE": "auto",
+                    "HIVE_DB": db,
+                },
+            )
+        finally:
+            server.shutdown()
+            server.server_close()  # keep the suite free of ResourceWarnings
+
+        self.assertIn("error", resp, f"a refusal must not be replaced by a local write: {resp}")
+        self.assertIn("HIVE_AGENT_ID", resp["error"]["message"])
+        self.assertFalse(
+            os.path.exists(db),
+            "the local database was created even though the app answered: data forking",
+        )
+
+    def test_auto_mode_prefers_the_app_when_it_answers(self):
+        """The other half of the rule: when the app works, the local store is unused.
+
+        A bridge that quietly served both engines would let one database grow in
+        the user's home directory while they believed everything was in the app.
+        The fake backend here answers with a result the local store could not
+        possibly produce, so seeing it proves who answered.
+        """
+        import http.server
+        import threading
+
+        seen = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(length)
+                seen.append(raw.decode("utf-8"))
+                body = json.dumps({
+                    "jsonrpc": "2.0", "id": 1,
+                    "result": {
+                        "content": [{
+                            "type": "text",
+                            "text": json.dumps({"ok": True, "answered_by": "app"}),
+                        }],
+                        "isError": False,
+                    },
+                }).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        port = server.server_address[1]
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        db = _fresh_db()
+        try:
+            resp = one(
+                [{
+                    "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                    "params": {"name": "recall", "arguments": {"query": "x"}},
+                }],
+                {
+                    "HIVE_MCP_URL": "http://127.0.0.1:%d/mcp" % port,
+                    "HIVE_MODE": "auto",
+                    "HIVE_DB": db,
+                },
+            )
+        finally:
+            server.shutdown()
+            server.server_close()
+
+        self.assertTrue(seen, "the app was never asked")
+        payload = json.loads(resp["result"]["content"][0]["text"])
+        self.assertEqual(payload.get("answered_by"), "app", f"the local store answered instead: {payload}")
+        self.assertNotIn("mode", payload, "an app answer must not be relabelled as local")
+        self.assertFalse(os.path.exists(db), "the local database was created while the app was answering")
 
     def test_notification_gets_no_response(self):
         out, _ = run_bridge(
@@ -175,7 +388,7 @@ class OfflineBehaviour(unittest.TestCase):
     def test_unknown_method_fails_with_a_fixable_message(self):
         resp = one(
             [{"jsonrpc": "2.0", "id": 5, "method": "resources/list"}],
-            {"HIVE_MCP_URL": DEAD},
+            {"HIVE_MCP_URL": DEAD, "HIVE_MODE": "remote"},
         )
         self.assertIn("error", resp)
         self.assertIn("apps.apple.com", resp["error"]["message"])
@@ -188,13 +401,23 @@ class ProxyEnvironment(unittest.TestCase):
     # Connection refused — the path that used to lose the actionable hint.
     PROXY = {"http_proxy": "http://127.0.0.1:59998", "HTTP_PROXY": "http://127.0.0.1:59998"}
 
+    # The failure message names the local database path from 0.1.7 onward, so a
+    # fixed path per class is required for the comparison below to mean
+    # "the proxy changed nothing" rather than "both runs picked a different
+    # temp file".
+    @classmethod
+    def setUpClass(cls):
+        cls.DB = _fresh_db()
+
     def _message(self, env_extra):
+        # remote: this class pins the error path, and since 0.1.7 that path is
+        # only reached when the caller has asked for the app and nothing else.
         resp = one(
             [{
                 "jsonrpc": "2.0", "id": 1, "method": "tools/call",
                 "params": {"name": "recall", "arguments": {"query": "x"}},
             }],
-            {"HIVE_MCP_URL": DEAD, **env_extra},
+            {"HIVE_MCP_URL": DEAD, "HIVE_MODE": "remote", "HIVE_DB": self.DB, **env_extra},
         )
         self.assertIn("error", resp)
         return resp["error"]["message"]
@@ -399,12 +622,18 @@ class NoDrift(unittest.TestCase):
         if count in words:
             self.assertIn(f"The {words[count]} tools", readme)
 
-    def test_readme_states_a_running_hive_is_required(self):
-        """Honesty rule 3: the prerequisite must be stated, not implied."""
+    def test_readme_states_when_the_app_is_needed(self):
+        """Honesty rule 3, re-scoped in 0.1.7.
+
+        The prerequisite used to be "a running app". The local engine now works
+        alone, so the honest statement is the boundary: what you get without the
+        app, and what the app adds. Both must be written down, because a reader
+        deciding whether to install something needs the line, not the implication.
+        """
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("Prerequisite", readme)
-        self.assertIn("running Hive", readme)
         self.assertIn("apps.apple.com", readme)
+        self.assertIn("without the app", readme.lower())
 
     def test_readme_states_a_hive_version_floor(self):
         """say/board only exist in Hive 1.4.5+; older installs must be warned."""
@@ -431,11 +660,25 @@ class NoDrift(unittest.TestCase):
     def test_version_agrees_across_files(self):
         pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
         version = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.M).group(1)
-        for rel in ("src/hive_mcp/stdio.py", "src/hive_mcp/__init__.py"):
+        for rel, pattern in (
+            ("src/hive_mcp/__init__.py", r'__version__\s*=\s*"([^"]+)"'),
+            ("src/hive_mcp/stdio.py", r'_FALLBACK_VERSION\s*=\s*"([^"]+)"'),
+        ):
             text = (REPO_ROOT / rel).read_text(encoding="utf-8")
-            for found in re.findall(r'__version__\s*=\s*"([^"]+)"', text):
+            found = re.findall(pattern, text)
+            self.assertTrue(found, f"{rel} declares no version literal for {pattern}")
+            for item in found:
                 with self.subTest(file=rel):
-                    self.assertEqual(found, version)
+                    self.assertEqual(item, version)
+
+        # Check what the code reports at runtime too, not only the literals:
+        # a source checkout beside an older installed copy once answered with
+        # the installed number, and no string comparison would have caught it.
+        proc = subprocess.run(
+            [sys.executable, "-c", "import hive_mcp.stdio as s; print(s.__version__)"],
+            capture_output=True, text=True, env=_clean_env(), timeout=60,
+        )
+        self.assertEqual(proc.stdout.strip(), version, proc.stderr)
 
     def test_changelog_lists_the_current_version(self):
         """A changelog missing its own latest entry is the loudest possible tell."""
