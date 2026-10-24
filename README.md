@@ -2,6 +2,9 @@
 
 <!-- mcp-name: io.github.330899935/hive-memory -->
 
+> **Also known as:** 记忆蜂巢 · Memory Hive · 蜂巢 · `hive-memory` (the official MCP Registry server name) · `memory-hive-mcp` (this PyPI package).
+> Not affiliated with [hive.com](https://hive.com) (team collaboration) or the `hive-mcp` Claude Code plugin.
+
 **Local-first personal memory for AI agents, over MCP.** Your agents can search what you have
 confirmed and propose what they think you should keep; **only you can confirm it.** Everything
 lives in one file on your own disk, and nothing is sent anywhere.
