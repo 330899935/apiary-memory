@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.330899935/hive-memory",
   "title": "Memory Hive",
-  "description": "Local-first memory over MCP. Ships a working SQLite memory store, so it runs standalone. Agents propose; only you confirm. The optional Hive app adds encrypted vaults.",
-  "version": "0.1.7",
+  "description": "Local-first memory over MCP. Built-in SQLite store; runs standalone. Agents propose; you confirm.",
+  "version": "0.1.8",
   "websiteUrl": "https://hello-fengchao.com",
   "repository": {
     "url": "https://github.com/330899935/memory-hive-mcp",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "memory-hive-mcp",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "transport": {
         "type": "stdio"
       },
