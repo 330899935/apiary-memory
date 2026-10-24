@@ -1,5 +1,7 @@
 # Memory Hive MCP
 
+<!-- mcp-name: io.github.330899935/hive-memory -->
+
 **Local-first personal memory for AI agents, over MCP.** Your agents can search what you have
 confirmed and propose what they think you should keep; **only you can confirm it.** Everything
 lives in one file on your own disk, and nothing is sent anywhere.

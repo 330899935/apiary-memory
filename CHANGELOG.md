@@ -12,6 +12,23 @@ versions may change configuration.
 
 ---
 
+## 0.1.8 — 2026-10-24
+
+**Documentation only. No code, no behaviour, no dependency changes.**
+
+### Why
+
+The official MCP Registry validates PyPI package ownership by looking for a token in the
+package description. A published PyPI description cannot be edited, so v0.1.7 could never
+satisfy the check. This release adds the token and nothing else.
+
+### Changed
+
+- `README.md`: added the registry ownership marker `<!-- mcp-name: io.github.330899935/hive-memory -->`
+  directly under the title. It is an HTML comment — invisible when rendered on PyPI or GitHub.
+
+---
+
 ## 0.1.7 — 2026-10-23
 
 **This release gives the package a memory engine of its own.** It is a behaviour change
