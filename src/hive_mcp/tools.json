@@ -1,5 +1,5 @@
 {
-  "$comment": "OFFLINE FALLBACK SNAPSHOT of the tool surface - not a second source of truth. When the Hive is reachable, tools/list is relayed from the backend. This file is what a machine WITHOUT a Hive sees, which is exactly what directory crawlers index, so it must stay both truthful and high-scoring (Glama TDQS). tests/test_bridge.py enforces agreement with tests/backend_tools_snapshot.json.",
+  "$comment": "OFFLINE FALLBACK SNAPSHOT of the tool surface - not a second source of truth. When the Hive is reachable, tools/list is relayed from the backend. This file mirrors the BACKEND, which is why it carries recall.query_vector and propose.vector although the local store has no embedder: stdio.py narrows the served list per engine at request time (LOCAL_UNSUPPORTED_ARGUMENTS), so a machine the local engine serves is never told it can send an embedding. Directory crawlers index the local path, so this file must stay both truthful and high-scoring (Glama TDQS). tests/test_bridge.py enforces agreement with tests/backend_tools_snapshot.json and enforces the runtime narrowing.",
   "tools": [
     {
       "name": "recall",

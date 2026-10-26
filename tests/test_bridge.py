@@ -230,6 +230,60 @@ class OfflineBehaviour(unittest.TestCase):
         self.assertEqual(hit["total"], 1, f"confirmed entry not found: {hit}")
         self.assertEqual(hit["results"][0]["id"], mem_id)
 
+    def test_every_tool_answers_locally_in_one_session(self):
+        """All six tools must run against the local store, in one session.
+
+        The capability work above narrows schemas; this pins the other half —
+        that narrowing was not achieved by quietly disabling a tool.
+        """
+        db = _fresh_db()
+        out, _proc = run_bridge(
+            [
+                {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                 "params": {"name": "propose", "arguments": {"content": "rotation lives in the vault note", "title": "rotation"}}},
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                 "params": {"name": "manage", "arguments": {"action": "list_pending"}}},
+                {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                 "params": {"name": "say", "arguments": {"summary": "rotation note queued", "kind": "result"}}},
+                {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                 "params": {"name": "board", "arguments": {}}},
+                {"jsonrpc": "2.0", "id": 5, "method": "tools/call",
+                 "params": {"name": "get_context", "arguments": {}}},
+            ],
+            {"HIVE_MCP_URL": DEAD, "HIVE_MODE": "local", "HIVE_DB": db},
+        )
+        payloads = []
+        for line in out:
+            resp = json.loads(line)
+            self.assertIn("result", resp, f"a tool refused to run locally: {resp}")
+            self.assertFalse(resp["result"].get("isError"), resp)
+            payload = json.loads(resp["result"]["content"][0]["text"])
+            self.assertEqual(payload.get("mode"), "local", f"mode tag lost: {payload}")
+            payloads.append(payload)
+        self.assertEqual(len(payloads), 5)
+
+        mem_id = payloads[0]["id"]
+        self.assertIn(mem_id, [p["id"] for p in payloads[1]["pending"]] if "pending" in payloads[1] else [mem_id])
+
+        # The human confirms out of band, exactly as documented.
+        sys.path.insert(0, str(PKG_DIR.parent))
+        from hive_mcp.store import Store  # noqa: E402
+
+        store = Store(db)
+        try:
+            self.assertEqual(store.approve(ids=[mem_id]), [mem_id])
+        finally:
+            store.close()
+
+        after = one(
+            [{"jsonrpc": "2.0", "id": 6, "method": "tools/call",
+              "params": {"name": "recall", "arguments": {"query": "rotation vault note"}}}],
+            {"HIVE_MCP_URL": DEAD, "HIVE_MODE": "local", "HIVE_DB": db},
+        )
+        hit = json.loads(after["result"]["content"][0]["text"])
+        self.assertEqual(hit["mode"], "local")
+        self.assertGreaterEqual(hit["total"], 1, f"recall did not find the confirmed entry: {hit}")
+
     def test_remote_mode_fails_loudly_instead_of_falling_back(self):
         """The honest-failure rule, kept for the mode where it still applies.
 
@@ -514,6 +568,221 @@ class AuthHint(unittest.TestCase):
             {"HIVE_MCP_URL": self.url},
         )
         self.assertEqual(resp["error"]["message"].count("HIVE_AGENT_ID"), 1)
+
+
+class LocalCapabilitySurface(unittest.TestCase):
+    """``tools/list`` must never offer an input the answering engine cannot use.
+
+    2026-10-26 regression: the app accepts ``recall.query_vector`` and
+    ``propose.vector``; the local store has no embedder and ``local_call()``
+    never read either argument. The snapshot advertised both anyway, so a model
+    that followed ``tools/list`` sent an embedding, received lexical results,
+    and was told nothing — a silent substitution, which this project treats as
+    the same class of dishonesty as inventing a tool result.
+    """
+
+    HIDDEN = {"recall": "query_vector", "propose": "vector"}
+
+    def _tools(self, env_extra, app=None):
+        """tools/list properties per tool, optionally against a fake app.
+
+        ``app`` is the list the fake backend returns from ``tools/list``; when
+        omitted the backend is simply unreachable.
+        """
+        url = DEAD
+        server = None
+        if app is not None:
+            import http.server
+            import threading
+
+            class Handler(http.server.BaseHTTPRequestHandler):
+                def do_POST(self):
+                    length = int(self.headers.get("Content-Length") or 0)
+                    request = json.loads(self.rfile.read(length) or b"{}")
+                    if request.get("method") == "tools/list":
+                        body = json.dumps({
+                            "jsonrpc": "2.0", "id": request.get("id"),
+                            "result": {"tools": app},
+                        }).encode()
+                    else:
+                        body = json.dumps({
+                            "jsonrpc": "2.0", "id": request.get("id"),
+                            "result": {
+                                "content": [{"type": "text", "text": "{}"}],
+                                "isError": False,
+                            },
+                        }).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+
+                def log_message(self, *args):
+                    pass
+
+            server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+            url = "http://127.0.0.1:%d/mcp" % server.server_address[1]
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+        env = dict(env_extra)
+        env["HIVE_MCP_URL"] = url
+        try:
+            resp = one(
+                [{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}],
+                env,
+            )
+        finally:
+            if server is not None:
+                server.shutdown()
+                server.server_close()
+        self.assertIn("result", resp, f"tools/list failed: {resp}")
+        return {
+            tool["name"]: set(tool["inputSchema"].get("properties") or {})
+            for tool in resp["result"]["tools"]
+        }
+
+    def _assert_hidden(self, props, why):
+        for tool, hidden in self.HIDDEN.items():
+            with self.subTest(tool=tool, why=why):
+                self.assertNotIn(
+                    hidden, props[tool],
+                    f"{why}: {tool} still advertises {hidden}, which the local "
+                    f"engine ignores. properties={sorted(props[tool])}",
+                )
+
+    def _assert_visible(self, props, why):
+        for tool, visible in self.HIDDEN.items():
+            with self.subTest(tool=tool, why=why):
+                self.assertIn(
+                    visible, props[tool],
+                    f"{why}: {tool}.{visible} was removed although the app "
+                    f"implements it in this mode. properties={sorted(props[tool])}",
+                )
+
+    def test_local_mode_hides_embedding_inputs(self):
+        props = self._tools({"HIVE_MODE": "local"})
+        self._assert_hidden(props, "HIVE_MODE=local")
+
+    def test_auto_mode_hides_them_when_the_app_is_down(self):
+        """auto has to be at least as conservative as local: it may fall back."""
+        props = self._tools({"HIVE_MODE": "auto"})
+        self._assert_hidden(props, "HIVE_MODE=auto, app unreachable")
+
+    def test_auto_mode_hides_them_even_when_the_app_answers(self):
+        """The same session must not see the fields, then lose them.
+
+        If the app's answer were relayed intact, a client would cache a list
+        promising embeddings; when the app died, every subsequent call would
+        degrade against the local store with nothing said. Narrowing while the
+        app is still alive is what makes the two answers identical.
+        """
+        app_tools = [
+            {
+                "name": "recall",
+                "description": "app recall",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "query_vector": {"type": "array"},
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
+                "name": "propose",
+                "description": "app propose",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string"},
+                        "vector": {"type": "array"},
+                    },
+                    "required": ["content"],
+                },
+            },
+        ]
+        props = self._tools({"HIVE_MODE": "auto"}, app=app_tools)
+        self._assert_hidden(props, "HIVE_MODE=auto, app answering")
+        # The rest of the app's answer survives: narrowing must not erase it.
+        self.assertEqual(props["recall"], {"query"})
+        self.assertEqual(props["propose"], {"content"})
+
+    def test_remote_mode_keeps_them_when_the_app_answers(self):
+        """remote can only ever route to the app, so its list is exactly true."""
+        app_tools = [
+            {
+                "name": "recall",
+                "description": "app recall",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "query_vector": {"type": "array"},
+                    },
+                },
+            },
+            {
+                "name": "propose",
+                "description": "app propose",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string"},
+                        "vector": {"type": "array"},
+                    },
+                },
+            },
+        ]
+        props = self._tools({"HIVE_MODE": "remote"}, app=app_tools)
+        self._assert_visible(props, "HIVE_MODE=remote, app answering")
+
+    def test_narrowing_removes_only_the_two_fields(self):
+        """Guard against over-trimming: everything else must still be offered."""
+        with open(TOOLS_JSON, encoding="utf-8") as fh:
+            declared = {
+                t["name"]: set((t["inputSchema"] or {}).get("properties") or {})
+                for t in json.load(fh)["tools"]
+            }
+        props = self._tools({"HIVE_MODE": "local"})
+        for name, params in declared.items():
+            with self.subTest(tool=name):
+                expected = params - {self.HIDDEN[name]} if name in self.HIDDEN else params
+                self.assertEqual(props[name], expected, f"{name} lost or gained parameters")
+
+    def test_the_omit_map_matches_the_local_engine(self):
+        """Each omitted input must really be one the local store cannot take.
+
+        Without this, the map becomes a wish list: someone adds a field here
+        for a reason of their own, or removes an entry after the store grew the
+        feature, and the serves-list quietly lies in the other direction.
+        """
+        import inspect
+
+        sys.path.insert(0, str(PKG_DIR.parent))
+        from hive_mcp import stdio  # noqa: E402  (test-local import)
+        from hive_mcp.store import Store  # noqa: E402
+
+        with open(TOOLS_JSON, encoding="utf-8") as fh:
+            declared = {
+                t["name"]: set((t["inputSchema"] or {}).get("properties") or {})
+                for t in json.load(fh)["tools"]
+            }
+        for tool, hidden in stdio.LOCAL_UNSUPPORTED_ARGUMENTS.items():
+            with self.subTest(tool=tool):
+                method = getattr(Store, tool)
+                accepted = set(inspect.signature(method).parameters)
+                for arg in hidden:
+                    with self.subTest(arg=arg):
+                        self.assertIn(
+                            arg, declared[tool],
+                            f"{tool}.{arg} is omitted but not declared in tools.json",
+                        )
+                        self.assertNotIn(
+                            arg, accepted,
+                            f"{tool}.{arg} is omitted, but Store.{tool} accepts it - "
+                            f"the omission is now a lie in the other direction",
+                        )
 
 
 class SchemaFidelity(unittest.TestCase):

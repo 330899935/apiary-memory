@@ -40,7 +40,7 @@ Offline behaviour
 | Method          | app unreachable                                        |
 | --------------- | ------------------------------------------------------ |
 | ``initialize``  | answered locally, protocol ``2024-11-05``              |
-| ``tools/list``  | answered locally from ``tools.json``                   |
+| ``tools/list``  | answered locally from ``tools.json``, minus app-only inputs |
 | ``tools/call``  | answered by the local store (real storage, real search) |
 | notifications   | swallowed silently (never answered)                    |
 
@@ -48,6 +48,38 @@ Offline behaviour
 for behaviour. When the app is reachable its own ``tools/list`` is what the
 client sees, so drift is structurally impossible there; offline the snapshot is
 the contract. ``tests/`` enforces that the two agree.
+
+Advertise only inputs some engine in this session can honour
+------------------------------------------------------------
+``tools.json`` mirrors the app, and the app's surface offers two embedding
+inputs — ``recall.query_vector`` and ``propose.vector`` — which the app really
+implements and the local store really does not (``store.py``: "No segmenter, no
+embedder, no vector index"). Relayed unchanged to a machine the local engine
+serves, ``tools/list`` becomes a promise ``tools/call`` cannot keep: the caller
+supplies an embedding, gets lexical results, and is told nothing. 0.1.8 shipped
+exactly that, which is the same class of dishonesty as inventing a tool result.
+
+The served list is therefore narrowed to the engines that can actually answer a
+call in this session (see ``LOCAL_UNSUPPORTED_ARGUMENTS``):
+
+| ``HIVE_MODE`` | served ``tools/list``                                  |
+| ------------- | ------------------------------------------------------ |
+| ``local``     | snapshot, minus embedding inputs                       |
+| ``auto``      | the app's answer, minus embedding inputs               |
+| ``remote``    | the app's answer **verbatim**, embedding inputs intact  |
+
+``auto`` narrows even when the app answers, and that is the deliberate part.
+Auto may route any later ``tools/call`` to the local store the moment the app
+stops answering, so a list fetched while the app was alive has to stay true
+after it dies. Widening later — ``remote``, or the app coming back — is safe: a
+capability that appears mid-session was never promised and nothing cached can
+be betrayed by it. Narrowing later is the failure this rule exists to prevent:
+the client cached the richer list, keeps sending an embedding, and every call
+degrades silently. Declaring the loss in each *response* (an ``ignored`` field)
+was the alternative; it states the loss after the model has already acted on
+the promise, so removing the input upstream of the decision is the cheaper
+honesty. A mode-independent list also means one surface to document, and the
+fields never blink as the app starts or stops.
 
 Configuration
 -------------
@@ -71,7 +103,7 @@ from pathlib import Path
 # Bumped with pyproject.toml. Only used when neither a source checkout nor
 # installed metadata can answer; tests assert it matches to keep the two from
 # drifting the way 0.1.0 did.
-_FALLBACK_VERSION = "0.1.7"
+_FALLBACK_VERSION = "0.1.8"
 
 
 def _resolve_version():
@@ -109,6 +141,20 @@ def _resolve_version():
 __version__ = _resolve_version()
 
 from hive_mcp.store import Store, StoreError, default_db_path  # noqa: E402
+
+# Inputs the app accepts and the local store cannot consume, per tool.
+#
+# The local engine takes neither list: ``Store.recall`` has no parameter for a
+# precomputed vector and ``Store.propose`` stores none, so a field left in the
+# list would be accepted, ignored, and never mentioned. Kept as a map rather
+# than a blanket strip so the reason survives review: each entry is a real
+# engine gap, not an oversight. ``tests/test_bridge.py`` checks every pair here
+# against both ``tools.json`` and the store's actual signatures, so this map
+# cannot quietly outlive the gap it describes.
+LOCAL_UNSUPPORTED_ARGUMENTS = {
+    "recall": ("query_vector",),
+    "propose": ("vector",),
+}
 
 AGENT_ID = os.environ.get("HIVE_AGENT_ID", "")
 AGENT_TOKEN = os.environ.get("HIVE_AGENT_TOKEN", "")
@@ -188,6 +234,56 @@ def load_tools():
         raise ValueError("%s contains no tools" % path)
     _TOOLS_CACHE = tools
     return tools
+
+
+def _without_local_unsupported(tools):
+    """Copy ``tools`` with the inputs the local engine cannot honour removed.
+
+    Returns new dicts rather than editing in place: ``load_tools()`` hands out
+    one cached list, and the same process may serve a relayed app list later in
+    the session. Trimming the cache would make a remote answer lose fields
+    because a local answer had been served earlier.
+    """
+    out = []
+    for tool in tools:
+        if not isinstance(tool, dict):
+            out.append(tool)
+            continue
+        droppable = LOCAL_UNSUPPORTED_ARGUMENTS.get(tool.get("name")) or ()
+        schema = tool.get("inputSchema")
+        props = schema.get("properties") if isinstance(schema, dict) else None
+        if not droppable or not isinstance(props, dict):
+            out.append(tool)
+            continue
+        present = [name for name in droppable if name in props]
+        if not present:
+            out.append(tool)
+            continue
+        narrowed = dict(tool)
+        narrowed["inputSchema"] = dict(schema)
+        narrowed["inputSchema"]["properties"] = {
+            name: spec for name, spec in props.items() if name not in present
+        }
+        out.append(narrowed)
+    return out
+
+
+def _narrow_tools_result(resp):
+    """Apply the same narrowing to a ``tools/list`` result relayed from the app.
+
+    Tolerant of shape: anything we do not recognise is passed through untouched
+    rather than dropped, because losing the app's answer would be a worse
+    failure than advertising one field too many.
+    """
+    if not isinstance(resp, dict) or not isinstance(resp.get("result"), dict):
+        return resp
+    tools = resp["result"].get("tools")
+    if not isinstance(tools, list):
+        return resp
+    narrowed = dict(resp)
+    narrowed["result"] = dict(resp["result"])
+    narrowed["result"]["tools"] = _without_local_unsupported(tools)
+    return narrowed
 
 
 def _rpc_result(msg_id, result):
@@ -453,7 +549,9 @@ def _local_initialize(msg_id):
             "instructions": (
                 "Local-first personal memory. Agents may propose entries; only "
                 "the human confirms them (memory-hive-mcp-cli approve), so "
-                "recall searches confirmed memory only. This server keeps its "
+                "recall searches confirmed memory only, and the tool list "
+                "advertises only inputs the engine serving this session can "
+                "honour. This server keeps its "
                 "data in a SQLite file on this machine and sends nothing "
                 "offline; if the Hive app is running, this bridge uses it "
                 "instead and leaves the local file untouched. Responses state "
@@ -516,8 +614,19 @@ def main():
                     # Prefer the app's live tool surface: that is what makes
                     # drift structurally impossible for anyone with the app.
                     resp = _forwarded_result(msg_id, payload, DISCOVERY_TIMEOUT)
-                if resp is None:
-                    resp = _rpc_result(msg_id, {"tools": load_tools()})
+                if resp is not None and MODE == "remote":
+                    # The app is the only engine remote can route to, so its
+                    # own list is exactly true. Relay it verbatim.
+                    pass
+                elif resp is not None:
+                    # auto: the app answered, but it may stop answering before
+                    # the next tools/call. Narrow now so the list cannot turn
+                    # into a lie mid-session (see the module docstring).
+                    resp = _narrow_tools_result(resp)
+                else:
+                    resp = _rpc_result(
+                        msg_id, {"tools": _without_local_unsupported(load_tools())}
+                    )
 
             elif method == "tools/call":
                 params = payload.get("params") or {}
