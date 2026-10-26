@@ -12,6 +12,45 @@ versions may change configuration.
 
 ---
 
+## Unreleased — serves the embedding inputs only where they work
+
+**No version bump, no publish.** Released or not is the owner's call; this keeps the
+fix reviewable on its own.
+
+### Why
+
+0.1.8's `tools.json` mirrors the app, which really does accept two precomputed-embedding
+inputs: `recall.query_vector` and `propose.vector`. The local store has no embedder at all
+(`store.py`: "No segmenter, no embedder, no vector index"), and `local_call()` never read
+either argument. A client that followed `tools/list` therefore supplied an embedding, got
+lexical results, and was told nothing about the substitution — the same class of dishonesty
+as inventing a tool result, and the one `stdio.py` already refuses on the error path.
+
+### Changed
+
+- `stdio.py`: `tools/list` is narrowed per engine. `local` and `auto` serve the surface minus
+  `recall.query_vector` / `propose.vector`; `remote` relays the app's own list verbatim,
+  because the app is the only engine it can route to. The gap is declared once, in
+  `LOCAL_UNSUPPORTED_ARGUMENTS`, together with why `auto` narrows even while the app answers:
+  auto may fall back to the local store mid-session, and a list that loses fields after the
+  client has cached it is worse than one that never had them.
+- `tools.json`: comment only — it stays a faithful mirror of the *app*, so the schema
+  fidelity tests still compare it against the recorded backend snapshot.
+- `README.md`: states that the two embedding inputs exist only where the app answers.
+
+### Verified
+
+Real runs, no app, dead port, throwaway `HIVE_DB`, 2026-10-26:
+
+| Scenario | `recall.query_vector` | `propose.vector` |
+| --- | --- | --- |
+| `HIVE_MODE=local`, app absent | absent | absent |
+| `HIVE_MODE=auto`, app absent | absent | absent |
+| `HIVE_MODE=auto`, app answering | absent | absent |
+| `HIVE_MODE=remote`, app answering | present | present |
+
+---
+
 ## 0.1.8 — 2026-10-24
 
 **Documentation only. No code, no behaviour, no dependency changes.**

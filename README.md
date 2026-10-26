@@ -114,7 +114,11 @@ version **1.4.5 or newer**) and leave `HIVE_MODE` at `auto`.
 ## The six tools
 
 The six tools are the whole surface. They are the same six whether the app or the local store
-answers; only the ranking behind them differs.
+answers; only the ranking behind them differs — and, for two inputs, whether they exist at all.
+The app accepts precomputed embeddings (`recall.query_vector`, `propose.vector`); the local
+store has no embedder, so `tools/list` omits those two wherever the local store can answer,
+including under `auto` where the app might stop answering mid-session. A field that would be
+accepted and silently ignored is not advertised at all.
 
 | Tool | Kind | What it is for |
 | --- | --- | --- |

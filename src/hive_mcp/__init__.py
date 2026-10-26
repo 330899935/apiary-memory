@@ -22,6 +22,6 @@ Use ``memory-hive-mcp`` and ``memory-hive-mcp-cli``, or
 ``from hive_mcp.stdio import main``.
 """
 
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 
 __all__ = ["__version__"]
