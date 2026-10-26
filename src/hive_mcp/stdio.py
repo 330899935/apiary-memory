@@ -40,7 +40,7 @@ Offline behaviour
 | Method          | app unreachable                                        |
 | --------------- | ------------------------------------------------------ |
 | ``initialize``  | answered locally, protocol ``2024-11-05``              |
-| ``tools/list``  | answered locally from ``tools.json``, minus app-only inputs |
+| ``tools/list``  | answered locally from ``tools.json``, minus app-only inputs and wording |
 | ``tools/call``  | answered by the local store (real storage, real search) |
 | notifications   | swallowed silently (never answered)                    |
 
@@ -59,14 +59,26 @@ serves, ``tools/list`` becomes a promise ``tools/call`` cannot keep: the caller
 supplies an embedding, gets lexical results, and is told nothing. 0.1.8 shipped
 exactly that, which is the same class of dishonesty as inventing a tool result.
 
-The served list is therefore narrowed to the engines that can actually answer a
-call in this session (see ``LOCAL_UNSUPPORTED_ARGUMENTS``):
+Prose is the same defect in another medium: a description is a claim about what
+will happen when the input is used, and "Matched semantically, not by substring"
+is true of the app's vector path and false of an engine that ranks by word and
+character-bigram overlap. The two maps below are therefore applied together -
+``LOCAL_UNSUPPORTED_ARGUMENTS`` for inputs, ``LOCAL_PROPERTY_TEXT`` for wording.
+
+The served list is narrowed to the engines that can actually answer a call in
+this session:
 
 | ``HIVE_MODE`` | served ``tools/list``                                  |
 | ------------- | ------------------------------------------------------ |
-| ``local``     | snapshot, minus embedding inputs                       |
-| ``auto``      | the app's answer, minus embedding inputs               |
+| ``local``     | snapshot, minus embedding inputs, local wording        |
+| ``auto``      | the app's answer, minus embedding inputs, local wording |
 | ``remote``    | the app's answer **verbatim**, embedding inputs intact  |
+
+Defaults are unified rather than narrowed. Both engines answer an omitted
+``recall.limit`` with 10, an omitted ``recall.compact`` with true, and an
+omitted ``say.ttl`` with 24 hours, because a default is a number in the schema,
+not a capability one engine lacks. ``store.py`` holds each one as a named
+constant and ``tests/test_bridge.py`` checks the advertised number against it.
 
 ``auto`` narrows even when the app answers, and that is the deliberate part.
 Auto may route any later ``tools/call`` to the local store the moment the app
@@ -140,7 +152,17 @@ def _resolve_version():
 
 __version__ = _resolve_version()
 
-from hive_mcp.store import Store, StoreError, default_db_path  # noqa: E402
+from hive_mcp.store import (  # noqa: E402
+    DEFAULT_BOARD_LIMIT,
+    DEFAULT_CONTEXT_LIMIT,
+    DEFAULT_PENDING_LIMIT,
+    DEFAULT_RECALL_COMPACT,
+    DEFAULT_RECALL_LIMIT,
+    DEFAULT_SAY_TTL,
+    Store,
+    StoreError,
+    default_db_path,
+)
 
 # Inputs the app accepts and the local store cannot consume, per tool.
 #
@@ -154,6 +176,39 @@ from hive_mcp.store import Store, StoreError, default_db_path  # noqa: E402
 LOCAL_UNSUPPORTED_ARGUMENTS = {
     "recall": ("query_vector",),
     "propose": ("vector",),
+}
+
+# Property descriptions that are true of the app and false of the local engine.
+# Same rule as the map above, applied to prose: a description is a promise about
+# what the input will do, and serving the app's promise from an engine that
+# cannot keep it is the same dishonesty as advertising an input that gets
+# dropped.
+#
+# ``recall.query`` is the case that forced this. The app *can* rank by meaning,
+# but only through ``query_vector`` (cosine, see ``_vector_recall``); its plain
+# text path is an inverted index over words and character bigrams with synonym
+# expansion and recency decay (``index.py``: ``search_memories``). The local
+# ranker is the same family without the synonyms: token overlap, a verbatim
+# bonus, a recency nudge. Neither engine matches "semantically, not by
+# substring" on text alone, so ``tools.json`` no longer claims it; it states
+# what the app does and points at ``query_vector`` for the richer claim, which
+# exists exactly where that input exists (``remote``). This override says what
+# the local engine can do, including the part a caller has to plan around: no
+# shared wording means no hit.
+#
+# ``tests/test_bridge.py`` checks every entry against ``tools.json``, so an
+# override cannot outlive the property it replaces.
+LOCAL_PROPERTY_TEXT = {
+    "recall": {
+        "query": (
+            "Natural-language search text, e.g. 'what did we decide about the "
+            "pricing page'. Ranked by how much of it the entry's words and "
+            "character bigrams cover, plus a small recency nudge and a bonus "
+            "when the whole query appears verbatim. This engine has no "
+            "embeddings, so an entry that shares no wording with the query "
+            "will not be found - add plain keywords alongside the sentence."
+        ),
+    },
 }
 
 AGENT_ID = os.environ.get("HIVE_AGENT_ID", "")
@@ -236,34 +291,57 @@ def load_tools():
     return tools
 
 
-def _without_local_unsupported(tools):
-    """Copy ``tools`` with the inputs the local engine cannot honour removed.
+def _narrow_for_local(tools):
+    """Copy ``tools`` with what the local engine cannot honour dropped or restated.
+
+    Two kinds of narrowing in one function, because they answer one question -
+    what can the engine serving this session really do with this tool? -
+    and splitting them would eventually apply one where the other was
+    forgotten:
+
+    * an input the engine never reads is removed (``LOCAL_UNSUPPORTED_ARGUMENTS``);
+    * a property description the engine would falsify is replaced
+      (``LOCAL_PROPERTY_TEXT``).
 
     Returns new dicts rather than editing in place: ``load_tools()`` hands out
     one cached list, and the same process may serve a relayed app list later in
     the session. Trimming the cache would make a remote answer lose fields
     because a local answer had been served earlier.
+
+    Tolerant of shape: anything unrecognised is passed through untouched rather
+    than dropped, because losing the app's answer would be a worse failure than
+    one field too many.
     """
     out = []
     for tool in tools:
         if not isinstance(tool, dict):
             out.append(tool)
             continue
-        droppable = LOCAL_UNSUPPORTED_ARGUMENTS.get(tool.get("name")) or ()
+        name = tool.get("name")
+        droppable = LOCAL_UNSUPPORTED_ARGUMENTS.get(name) or ()
+        restated = LOCAL_PROPERTY_TEXT.get(name) or {}
         schema = tool.get("inputSchema")
         props = schema.get("properties") if isinstance(schema, dict) else None
-        if not droppable or not isinstance(props, dict):
+        if not isinstance(props, dict):
             out.append(tool)
             continue
-        present = [name for name in droppable if name in props]
-        if not present:
+        dropped = [prop for prop in droppable if prop in props]
+        rewritten = [prop for prop in restated if prop in props]
+        if not dropped and not rewritten:
             out.append(tool)
             continue
+        narrowed_props = {}
+        for prop_name, spec in props.items():
+            if prop_name in dropped:
+                continue
+            text = restated.get(prop_name)
+            if text and isinstance(spec, dict):
+                spec = dict(spec)
+                spec["description"] = text
+            narrowed_props[prop_name] = spec
         narrowed = dict(tool)
         narrowed["inputSchema"] = dict(schema)
-        narrowed["inputSchema"]["properties"] = {
-            name: spec for name, spec in props.items() if name not in present
-        }
+        narrowed["inputSchema"]["properties"] = narrowed_props
         out.append(narrowed)
     return out
 
@@ -282,7 +360,7 @@ def _narrow_tools_result(resp):
         return resp
     narrowed = dict(resp)
     narrowed["result"] = dict(resp["result"])
-    narrowed["result"]["tools"] = _without_local_unsupported(tools)
+    narrowed["result"]["tools"] = _narrow_for_local(tools)
     return narrowed
 
 
@@ -435,7 +513,15 @@ def _tool_result(payload_dict, is_error=False):
 
 
 def local_call(name, arguments):
-    """Run one tool against the local store. Returns the MCP result envelope."""
+    """Run one tool against the local store. Returns the MCP result envelope.
+
+    Every default here is a named constant from ``store.py`` rather than a
+    literal, because these are the numbers ``tools.json`` advertises. The
+    literals used to be typed twice - ``limit=10`` in the schema and
+    ``arguments.get("limit", 8)`` here - and a caller that omitted the argument
+    got the smaller, unadvertised answer with nothing to indicate the
+    substitution.
+    """
     if name not in LOCAL_TOOLS:
         return _tool_result(
             {"ok": False, "error": "unknown tool %r" % name, "mode": "local"}, True
@@ -446,9 +532,9 @@ def local_call(name, arguments):
         if name == "recall":
             payload = store.recall(
                 arguments.get("query", ""),
-                limit=arguments.get("limit", 8),
+                limit=arguments.get("limit", DEFAULT_RECALL_LIMIT),
                 vaults=arguments.get("vaults"),
-                compact=bool(arguments.get("compact")),
+                compact=bool(arguments.get("compact", DEFAULT_RECALL_COMPACT)),
             )
         elif name == "propose":
             payload = store.propose(
@@ -462,7 +548,9 @@ def local_call(name, arguments):
             action = (arguments.get("action") or "").strip()
             mem_id = arguments.get("id", "")
             if action == "list_pending":
-                payload = store.list_pending(limit=arguments.get("limit", 20))
+                payload = store.list_pending(
+                    limit=arguments.get("limit", DEFAULT_PENDING_LIMIT)
+                )
             elif action == "get_by_id":
                 payload = store.get_by_id(mem_id)
             elif action == "forget":
@@ -477,7 +565,9 @@ def local_call(name, arguments):
                     "get_by_id, discard_pending (got %r)" % action
                 )
         elif name == "get_context":
-            payload = store.get_context(limit=arguments.get("limit", 8))
+            payload = store.get_context(
+                limit=arguments.get("limit", DEFAULT_CONTEXT_LIMIT)
+            )
         elif name == "say":
             payload = store.say(
                 arguments.get("summary", ""),
@@ -486,12 +576,12 @@ def local_call(name, arguments):
                 stage=arguments.get("stage", ""),
                 task_id=arguments.get("task_id", ""),
                 refs=arguments.get("refs"),
-                ttl=arguments.get("ttl", 0),
+                ttl=arguments.get("ttl", DEFAULT_SAY_TTL),
                 actor=AGENT_ID,
             )
         else:  # board
             payload = store.board(
-                limit=arguments.get("limit", 20),
+                limit=arguments.get("limit", DEFAULT_BOARD_LIMIT),
                 since=arguments.get("since", 0),
                 roster=bool(arguments.get("roster")),
             )
@@ -550,8 +640,8 @@ def _local_initialize(msg_id):
                 "Local-first personal memory. Agents may propose entries; only "
                 "the human confirms them (memory-hive-mcp-cli approve), so "
                 "recall searches confirmed memory only, and the tool list "
-                "advertises only inputs the engine serving this session can "
-                "honour. This server keeps its "
+                "advertises only inputs and wording the engine serving this "
+                "session can honour. This server keeps its "
                 "data in a SQLite file on this machine and sends nothing "
                 "offline; if the Hive app is running, this bridge uses it "
                 "instead and leaves the local file untouched. Responses state "
@@ -625,7 +715,7 @@ def main():
                     resp = _narrow_tools_result(resp)
                 else:
                     resp = _rpc_result(
-                        msg_id, {"tools": _without_local_unsupported(load_tools())}
+                        msg_id, {"tools": _narrow_for_local(load_tools())}
                     )
 
             elif method == "tools/call":

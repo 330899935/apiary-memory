@@ -103,7 +103,12 @@ def cmd_reject(args):
 
 def cmd_search(args):
     store = _store(args)
-    data = store.recall(args.query, limit=args.limit, vaults=args.vault or None)
+    # Full bodies on purpose: this is the surface where a human reads the entry,
+    # and the store's default is now the MCP default (compact), which is the
+    # right answer for a model's context window and the wrong one here.
+    data = store.recall(
+        args.query, limit=args.limit, vaults=args.vault or None, compact=False
+    )
     if not data["results"]:
         _print("no confirmed memory matched %r" % args.query)
         if data.get("note"):
