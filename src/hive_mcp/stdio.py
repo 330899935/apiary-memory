@@ -93,6 +93,36 @@ the promise, so removing the input upstream of the decision is the cheaper
 honesty. A mode-independent list also means one surface to document, and the
 fields never blink as the app starts or stops.
 
+One cursor in the answer, and no silent restart
+----------------------------------------------
+Inputs are narrowed; the *answer* is aligned, because a caller must not have to
+branch on which engine replied. ``board`` returns the app's shape — ``items``,
+``unread``, ``count``, ``cursor``, ``reader`` — and its ``cursor`` is a card id,
+the same string ``mcp_server.py``'s ``_tool_board`` returns.
+
+Until now it was the opposite, and ``auto`` is what made it bite. This engine
+answered ``messages``/``total`` and a float epoch cursor, and parsed ``since``
+with ``float()``. A caller that polled while the app answered got a card id,
+kept it, and lost the app — at which point ``float('CB2026...')`` raised, the
+exception was swallowed into ``since = 0``, and the entire board came back as if
+nothing had been read, with no field saying the cursor had been dropped. A float
+sent the other way matched no card id in the app, which quietly answered with
+its newest ``limit``. Both directions failed silently, which is the one thing
+this module refuses everywhere else.
+
+One cursor type removes the misread. It cannot remove the case behind it: the
+cursor's card may be gone — expired, trimmed, or issued by the other engine,
+whose ids are ``CB…`` against this store's ``msg_…``. Neither engine can resume
+from that, so both return their newest window; the app says nothing about it, and
+this engine adds ``since_unknown`` and a ``note`` naming the reason. Restarting is
+allowed; restarting silently is not.
+
+Two answer shapes stay deliberately unequal, because the engines hold different
+data: ``recall`` entries name their vault ``vault`` here and ``wh`` in the app,
+and ``get_context`` returns one flat ``digest`` here against one bucket per
+warehouse upstream. The README states both, so the difference is read rather
+than discovered mid-session.
+
 Configuration
 -------------
 * ``HIVE_MODE``         — ``auto`` (default), ``local``, ``remote``
@@ -580,10 +610,15 @@ def local_call(name, arguments):
                 actor=AGENT_ID,
             )
         else:  # board
+            # `since` is the card id `board` returned last time, the same string
+            # the app hands out, so it survives a change of engine. Passing a
+            # default of 0 here is what used to make a foreign cursor a silent
+            # full re-read; `Store.board` now reports a cursor it cannot place.
             payload = store.board(
                 limit=arguments.get("limit", DEFAULT_BOARD_LIMIT),
-                since=arguments.get("since", 0),
+                since=arguments.get("since", ""),
                 roster=bool(arguments.get("roster")),
+                reader=AGENT_ID,
             )
     except StoreError as exc:
         return _tool_result({"ok": False, "error": str(exc), "mode": "local"}, True)

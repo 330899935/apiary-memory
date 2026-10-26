@@ -1,6 +1,6 @@
 """Tests for the bridge. Standard library only — no test dependencies.
 
-Six groups, each pinning a contract that has already been broken once:
+Seven groups, each pinning a contract that has already been broken once:
 
 ``OfflineBehaviour``
     What a machine with no Hive app gets. The handshake and tool discovery must
@@ -25,6 +25,14 @@ Six groups, each pinning a contract that has already been broken once:
     engine's defaults were maintained separately, so an omitted ``limit``,
     ``compact`` or ``ttl`` answered something the schema never promised. Each
     test compares the answer against the number ``tools.json`` declares.
+
+``BoardCursor``
+    2026-10-26 regression, the same defect on the answer side. ``board``
+    answered ``messages``/``total`` and a float epoch cursor while the schema
+    declared ``since`` as a string and the app returned a card id. Under ``auto``
+    a cursor from one engine reached the other, failed to parse, and came back as
+    a silent full re-read. One cursor type in the answer, and a cursor that
+    cannot be placed says so.
 
 ``SchemaFidelity``
     2026-10-22 regression: ``tools.json`` was a hand-rewrite, not a mirror. It
@@ -998,7 +1006,8 @@ class AdvertisedDefaults(unittest.TestCase):
         advertised = self.declared["board"]["limit"]["default"]
         self.assertLess(advertised, self.BOARD)
         got = self._call("board", {})
-        self.assertEqual(len(got["messages"]), advertised)
+        self.assertEqual(len(got["items"]), advertised)
+        self.assertEqual(got["count"], advertised)
 
     def test_say_default_ttl(self):
         """The card must expire when the description says it will."""
@@ -1024,6 +1033,187 @@ class AdvertisedDefaults(unittest.TestCase):
         huge = self._call("say", {"summary": "probe ttl huge", "ttl": 10 ** 9})
         self.assertEqual(zero["ttl"], 60, zero)
         self.assertEqual(huge["ttl"], 30 * 24 * 3600, huge)
+
+
+class BoardCursor(unittest.TestCase):
+    """The answer side of the same defect: two engines, two shapes, one cursor.
+
+    2026-10-26 regression. ``tools.json`` declares ``board.since`` as a string and
+    the app returns the id of its newest card, but the local engine answered
+    ``messages``/``total`` and a float epoch timestamp, and parsed ``since`` with
+    ``float()``. Under ``HIVE_MODE=auto`` a caller polls while the app answers,
+    keeps the card id it was handed, and loses the app: ``float('CB2026...')``
+    raised, the exception was swallowed into ``since = 0``, and the entire board
+    came back as if nothing had been read — with no field saying the cursor had
+    been discarded. A float sent the other way matched no card id in the app,
+    which answered with its newest ``limit`` just as quietly.
+
+    Both directions now speak one cursor type, and the case underneath — a cursor
+    whose card is gone (expired, trimmed, or from the other engine, whose ids are
+    ``CB…`` against this store's ``msg_…``) — is reported with ``since_unknown``
+    and a ``note`` instead of being indistinguishable from a first read.
+    """
+
+    APP_SHAPE = {
+        "ok", "cursor", "unread", "count", "items", "reader", "mode",
+    }  # ``mode`` is this engine's tag; the rest is ``_tool_board``'s dict.
+
+    def setUp(self):
+        with open(TOOLS_JSON, encoding="utf-8") as fh:
+            tools = {t["name"]: t for t in json.load(fh)["tools"]}
+        self.board_tool = tools["board"]
+
+    def _post(self, db, summaries):
+        """Put cards on the board through the store, the way ``say`` does."""
+        sys.path.insert(0, str(PKG_DIR.parent))
+        from hive_mcp.store import Store  # noqa: E402  (test-local import)
+
+        store = Store(db)
+        try:
+            return [store.say(s, ttl=86400)["id"] for s in summaries]
+        finally:
+            store.close()
+
+    def _board(self, db, arguments, env=None):
+        extra = {"HIVE_MCP_URL": DEAD, "HIVE_MODE": "local", "HIVE_DB": db}
+        extra.update(env or {})
+        resp = one(
+            [{
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {"name": "board", "arguments": arguments},
+            }],
+            extra,
+        )
+        self.assertIn("result", resp, f"board failed locally: {resp}")
+        self.assertFalse(resp["result"].get("isError"), resp)
+        return json.loads(resp["result"]["content"][0]["text"])
+
+    def test_the_answer_is_the_shape_the_app_answers_with(self):
+        """A caller must not have to branch on which engine replied."""
+        db = _fresh_db()
+        self._post(db, ["one", "two", "three"])
+        got = self._board(db, {})
+        self.assertEqual(set(got), self.APP_SHAPE, got)
+        self.assertEqual(got["count"], len(got["items"]))
+        self.assertEqual(got["unread"], 3)
+        # The private names this engine used for two of those fields are gone,
+        # not merely joined by the new ones: two names for one fact is how the
+        # two engines drifted apart in the first place.
+        self.assertNotIn("messages", got)
+        self.assertNotIn("total", got)
+
+    def test_the_cursor_is_the_id_of_a_card(self):
+        db = _fresh_db()
+        ids = self._post(db, ["one", "two", "three"])
+        got = self._board(db, {})
+        self.assertIsInstance(got["cursor"], str)
+        self.assertEqual(got["cursor"], ids[-1])
+        self.assertEqual(got["items"][-1]["id"], ids[-1])
+
+    def test_the_cursor_has_the_type_tools_json_declares(self):
+        """The engine answers the declared type, not a second one beside it.
+
+        ``since`` is declared ``string``, so the value this engine emits has to
+        survive being handed straight back as ``since``: a float cursor was a
+        promise the schema never made.
+        """
+        declared = self.board_tool["inputSchema"]["properties"]["since"]
+        self.assertEqual(declared["type"], "string")
+
+        db = _fresh_db()
+        self._post(db, ["one", "two"])
+        first = self._board(db, {})
+        again = self._board(db, {"since": first["cursor"]})
+        self.assertNotIn("since_unknown", again)
+        self.assertEqual(again["count"], 0)
+        self.assertEqual(again["cursor"], first["cursor"])
+
+    def test_polling_returns_only_what_arrived_since_the_cursor(self):
+        db = _fresh_db()
+        self._post(db, ["one", "two"])
+        first = self._board(db, {})
+        new_id = self._post(db, ["three"])[0]
+
+        second = self._board(db, {"since": first["cursor"]})
+        self.assertEqual(second["count"], 1)
+        self.assertEqual([item["id"] for item in second["items"]], [new_id])
+        self.assertEqual(second["unread"], 1)
+        self.assertEqual(second["cursor"], new_id)
+
+        # An idle poll must be a quiet zero, not an empty cursor that would turn
+        # the next call into a full re-read.
+        third = self._board(db, {"since": second["cursor"]})
+        self.assertEqual((third["unread"], third["count"], third["items"]), (0, 0, []))
+        self.assertEqual(third["cursor"], new_id)
+        self.assertNotIn("since_unknown", third)
+
+    def test_a_cursor_from_the_other_engine_is_reported_not_swallowed(self):
+        """The case that used to become a silent re-read of the whole board."""
+        db = _fresh_db()
+        ids = self._post(db, ["one", "two"])
+        foreign = "CB20261026180000000001"   # shaped like an app card id
+        got = self._board(db, {"since": foreign})
+        self.assertTrue(got.get("since_unknown"), f"the restart was not stated: {got}")
+        self.assertIn(foreign, got["note"])
+        self.assertIn("CB", got["note"])     # names the id shape, not just "invalid"
+        self.assertIn("msg_", got["note"])
+        self.assertEqual(got["unread"], 2)
+        self.assertEqual(got["count"], 2)
+        self.assertEqual(got["cursor"], ids[-1])
+
+    def test_a_legacy_epoch_cursor_is_reported_not_read_as_zero(self):
+        """A float cursor is a caller mistake this engine names, not one it obeys.
+
+        Reading it as an epoch would be the second half of the old bug: the
+        previous engine emitted floats, so a stale one must not be mistaken for
+        the new type silently in either direction.
+        """
+        db = _fresh_db()
+        self._post(db, ["one", "two"])
+        got = self._board(db, {"since": 1729937000.5})
+        self.assertTrue(got.get("since_unknown"), got)
+        self.assertIn("epoch", got["note"])
+        self.assertEqual(got["unread"], 2)
+
+    def test_what_the_limit_hides_is_counted_and_said(self):
+        """``unread`` counts past the page, and the note declines to be quiet."""
+        db = _fresh_db()
+        advertised = self.board_tool["inputSchema"]["properties"]["limit"]["default"]
+        count = advertised + 5
+        ids = self._post(db, ["m%02d" % i for i in range(count)])
+        got = self._board(db, {})
+        self.assertEqual(got["count"], advertised)
+        self.assertEqual(got["unread"], count)
+        self.assertEqual(got["items"][-1]["id"], ids[-1])   # newest page, as upstream
+        self.assertIn("note", got)
+        self.assertIn(str(count), got["note"])
+        self.assertIn("unread", got["note"])
+
+    def test_an_empty_board_has_an_empty_cursor(self):
+        got = self._board(_fresh_db(), {})
+        self.assertEqual(got["cursor"], "")
+        self.assertEqual((got["unread"], got["count"], got["items"]), (0, 0, []))
+        self.assertNotIn("since_unknown", got)
+
+    def test_reader_is_the_agent_that_asked(self):
+        """``reader`` comes from the credential, the way ``say``'s actor does."""
+        db = _fresh_db()
+        self.assertEqual(self._board(db, {})["reader"], "")
+        self.assertEqual(
+            self._board(db, {}, {"HIVE_AGENT_ID": "agent_probe"})["reader"],
+            "agent_probe",
+        )
+
+    def test_roster_names_the_agent_the_way_the_app_does(self):
+        db = _fresh_db()
+        self._post(db, ["one", "two"])
+        got = self._board(db, {"roster": True})
+        roster = got.get("roster")
+        self.assertIsInstance(roster, list)
+        self.assertEqual(len(roster), 1, roster)
+        entry = roster[0]
+        self.assertEqual(set(entry), {"agent_id", "messages", "last_seen"}, entry)
+        self.assertEqual(entry["messages"], 2)
 
 
 class SchemaFidelity(unittest.TestCase):
@@ -1152,6 +1342,23 @@ class NoDrift(unittest.TestCase):
             readme, r"1\.4\.\d",
             "README must state which Hive version this package expects",
         )
+
+    def test_readme_states_the_response_shapes(self):
+        """The answer is part of the surface, so it is part of this test.
+
+        ``board``'s shape is the app's, which means the README has to name the
+        fields a caller will read and the flag that says a cursor could not be
+        placed. The two shapes that are deliberately left unequal are named too:
+        a reader switching engines should meet that difference here rather than
+        in the middle of a session.
+        """
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("Response shapes", readme)
+        for token in ("`items`", "`unread`", "`count`", "`cursor`",
+                      "`since_unknown`", "`wh`", "`digest`"):
+            with self.subTest(token=token):
+                self.assertIn(token, readme,
+                              f"README does not document {token} in the answer")
 
     def test_server_json_matches_the_package(self):
         path = REPO_ROOT / "server.json"
