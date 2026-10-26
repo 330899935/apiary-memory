@@ -709,23 +709,80 @@ class Store(object):
             ),
         }
 
-    def board(self, limit=DEFAULT_BOARD_LIMIT, since=0, roster=False):
+    def board(self, limit=DEFAULT_BOARD_LIMIT, since="", roster=False, reader=""):
+        """Read the board the way the app's ``board`` tool reads it.
+
+        The cursor is a card **id**, and ``since`` takes that same id back. That
+        is the app's contract (``mcp_server.py``: ``_tool_board`` returns
+        ``cursor = ordered[-1]['id']``) and it is what ``tools.json`` already
+        declared: ``board.since`` has ``"type": "string"`` in the snapshot and in
+        the app's own schema. This engine was the odd one out in the most
+        damaging way available — it answered a float epoch timestamp and parsed
+        ``since`` with ``float()``.
+
+        What that cost, under ``HIVE_MODE=auto``: a caller polls while the app
+        answers, keeps the card id it was given; the app stops answering; the
+        next poll reaches this store, ``float('CB2026...')`` raises, the
+        exception was swallowed into ``since = 0``, and the whole board came back
+        as if nothing had been read — with no field to say the cursor had been
+        discarded. The other direction was equally quiet: an epoch float matched
+        no card id in the app, so the app answered with its newest ``limit``.
+        Both are the silent-substitution defect ``stdio.py`` already refuses on
+        the error path, so the fix is one cursor type rather than two of them
+        plus a translation nobody wrote.
+
+        A single type removes the misread; it cannot remove the case behind it. A
+        cursor whose card is no longer on the board — expired (cards live 24
+        hours by default), trimmed, or issued by the *other* engine, whose ids
+        are a different shape (``CB…`` in the app, ``msg_…`` here) — has nothing
+        to resume from. Both engines then return their newest window; the app
+        says nothing about it, and this one sets ``since_unknown`` plus a
+        ``note`` naming the reason. A poll that silently restarts is exactly the
+        failure this change removes, so the restart is stated.
+
+        The rest of the shape is the app's, field for field — ``items``,
+        ``unread``, ``count``, ``reader`` — so a caller never has to branch on
+        which engine answered. ``unread`` counts every live card after the cursor,
+        ``count`` counts what this answer carries, and ``unread > count``
+        therefore means cards were waiting that the page did not cover; the
+        ``note`` says that in words rather than leaving it to be inferred.
+        ``messages`` and ``total`` no longer exist here: they were this engine's
+        private names for two of these fields.
+        """
         try:
             limit = int(limit)
         except (TypeError, ValueError):
             limit = DEFAULT_BOARD_LIMIT
         limit = max(1, min(limit, 100))
-        try:
-            since = float(since or 0)
-        except (TypeError, ValueError):
-            since = 0.0
+        # An omitted value, `None`, a foreign id and a legacy epoch all arrive
+        # here as text: the declared type is a string, so a number is a caller
+        # mistake this method reports rather than a second shape it invents.
+        since = "" if since is None else str(since).strip()
         now = time.time()
+        # The whole live board, oldest first. A cursor can only be resolved
+        # against the order the app resolves it in, and `unread` counts what
+        # follows the cursor rather than what fits in a page. `SCAN_CAP` guards
+        # `memories` because that table grows without bound; a board card deletes
+        # itself by expiry, so the live set stays small by construction.
         rows = self.conn.execute(
-            "SELECT * FROM board WHERE created > ? AND (expires IS NULL OR expires > ?)"
-            " ORDER BY created ASC LIMIT ?",
-            (since, now, limit),
+            "SELECT * FROM board WHERE expires IS NULL OR expires > ?"
+            " ORDER BY created ASC",
+            (now,),
         ).fetchall()
-        messages = [
+        start = 0
+        located = not since
+        if since:
+            for index, row in enumerate(rows):
+                if row["id"] == since:
+                    start = index + 1
+                    located = True
+                    break
+        fresh = rows[start:]
+        # Page the newest `limit` of what followed the cursor, exactly as
+        # `_tool_board` does (``fresh[-limit:]``), oldest-first within the page.
+        # Which window is returned is part of the shape a caller sees.
+        shown = fresh[-limit:] if len(fresh) > limit else fresh
+        items = [
             {
                 "id": r["id"],
                 "summary": r["summary"],
@@ -737,23 +794,48 @@ class Store(object):
                 "from": r["actor"],
                 "created": _iso(r["created"]),
             }
-            for r in rows
+            for r in shown
         ]
         response = {
             "ok": True,
-            "messages": messages,
-            "total": len(messages),
-            "cursor": rows[-1]["created"] if rows else since,
+            "cursor": rows[-1]["id"] if rows else "",
+            "unread": len(fresh),
+            "count": len(items),
+            "items": items,
+            "reader": str(reader or ""),
             "mode": "local",
         }
+        if since and not located:
+            response["since_unknown"] = True
+            response["note"] = (
+                "`since` (%s) is not a card on this board, so there was nothing "
+                "to resume from: cards expire (24 hours by default), the other "
+                "engine's cards use a different id shape (CB... in the app, "
+                "msg_... here), and an epoch timestamp is not a cursor. The "
+                "newest %d live card(s) are returned instead; pass `cursor` "
+                "back as `since` to poll from here on."
+                % (_clean(since, 40), len(items))
+            )
+        elif len(fresh) > limit:
+            response["note"] = (
+                "%d card(s) were waiting but `limit` is %d, so the newest %d are "
+                "here - `unread` %d > `count` %d is how that shows. Raise `limit` "
+                "to read the rest, and note the cursor has already moved to the "
+                "newest card on the board."
+                % (len(fresh), limit, len(items), len(fresh), len(items))
+            )
         if roster:
             seen = self.conn.execute(
                 "SELECT actor, COUNT(*) AS n, MAX(created) AS last FROM board"
                 " WHERE expires IS NULL OR expires > ? GROUP BY actor ORDER BY last DESC",
                 (now,),
             ).fetchall()
+            # `agent_id` because that is the key the app's roster cards use for
+            # the same fact; `messages` and `last_seen` are what a store with no
+            # registry can honestly say. No seats, leases or display names are
+            # invented here.
             response["roster"] = [
-                {"agent": r["actor"], "messages": r["n"], "last_seen": _iso(r["last"])}
+                {"agent_id": r["actor"], "messages": r["n"], "last_seen": _iso(r["last"])}
                 for r in seen
             ]
         return response

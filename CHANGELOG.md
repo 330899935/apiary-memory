@@ -12,6 +12,80 @@ versions may change configuration.
 
 ---
 
+## Unreleased — one cursor, one board shape, and no silent restart
+
+**No version bump, no publish.** Same defect class as the two entries below, on the side those
+did not touch: the *answer*. `tools.json` declared `board.since` as a string and the app
+returns a card id; the local engine answered `messages`/`total` and a float epoch timestamp.
+Under `HIVE_MODE=auto` that was not a cosmetic difference — it was two silent re-reads.
+
+### Why
+
+The cursor is the one value a caller carries *across* an engine switch, and `auto` switches
+engines without warning.
+
+1. **App cursor → local store.** A caller polls while the app answers and keeps the card id
+   (`CB2026…`). The app stops answering, so the next poll reaches the local store, where
+   `float('CB2026…')` raised, the exception was swallowed into `since = 0`, and the entire
+   board came back as if nothing had been read — with no field indicating the cursor had been
+   discarded.
+2. **Local cursor → app.** A float epoch matched no card id in the app, which answered with
+   its newest `limit`. Equally quiet, and unreachable from this package.
+
+The same split ran through the answer: `items`/`unread`/`count`/`reader` upstream against
+`messages`/`total` here, so a model reading a board had to know which engine replied before it
+could read a field.
+
+### Changed
+
+- `store.board()`: the cursor is a **card id**, the same string the app returns, and `since`
+  takes it back. The `float()` parse is gone.
+- `store.board()`: answers the app's shape field for field — `items`, `unread`, `count`,
+  `cursor`, `reader` — plus this engine's `mode` tag. `messages` and `total` are removed
+  rather than kept alongside: two names for one fact is how the two engines drifted apart.
+- `store.board()`: `unread` counts every live card after the cursor and `count` counts what
+  the answer carries, so `unread > count` says the page did not cover everything waiting; a
+  `note` says that in words instead of leaving it to be inferred from two numbers.
+- `store.board()`: a cursor that cannot be placed — expired, trimmed, or issued by the other
+  engine (ids are `CB…` there, `msg_…` here), or a legacy epoch — now sets `since_unknown`
+  and a `note` naming the reason. The window returned is the same newest window the app
+  returns; the difference is that the restart is stated.
+- `store.board()`: `reader` comes from the credential (`HIVE_AGENT_ID`), the way `say`'s actor
+  already did, and `roster` entries key the agent as `agent_id` — the app's name for the same
+  fact.
+- `stdio.local_call()`: passes `since` straight through with no default float, and supplies
+  `reader` from `HIVE_AGENT_ID`.
+- `README.md`: a new *Response shapes* section — the unified fields, the `since_unknown` flag,
+  and the three shapes that stay deliberately unequal (`vault` vs `wh`, `digest` vs one bucket
+  per warehouse, and roster entries, which locally carry only what a SQLite file can know).
+- `stdio.py`: module docstring records the same contract and why one cursor type beats a
+  translation layer.
+- `tests/test_bridge.py`: 10 new tests in `BoardCursor` plus one in `NoDrift`, 61 total. They
+  pin the shape, the id cursor, the declared `since` type, a round trip, a quiet idle poll, the
+  foreign-cursor and legacy-epoch reports, the truncation note, the empty board, `reader`, and
+  the roster key — and one requires the README to keep stating all of it. Run against the
+  previous engine, all 10 `BoardCursor` tests fail (6 failures, 4 errors), so they measure the
+  change rather than the status quo.
+
+Not changed: the item-level keys inside `items` (`created`, `refs`, `stage` here against `at`,
+`refs_count`, `state`, `decision` upstream). They are listed in the README rather than renamed,
+because the app's card carries lifecycle state and a ref *count* this store does not have, and
+a rename would have to invent them.
+
+### Verified
+
+Local, `HIVE_MODE=local` against a throwaway `HIVE_DB` (the whole suite of 61 tests is this
+path): a fresh board answers `cursor` `""` with `unread`/`count` 0; three cards answer
+`items`/`unread` 3/`count` 3 and a `cursor` equal to the newest card id; a second poll with that
+cursor answers `count` 0 and the same cursor; 25 cards with the default limit answer `count` 20,
+`unread` 25 and a note; an app-shaped `CB…` cursor and the old float both answer the newest
+window with `since_unknown: true` and a note naming which case it was. The app's shape is taken
+from `mcp_server.py`'s `_tool_board` (its `cursor = ordered[-1]['id']`, `fresh[-limit:]`,
+`unread = len(fresh)`), not from a live MCP call: `tools/call` against the running app needs an
+agent credential, and reading its code is the check that does not require one.
+
+---
+
 ## Unreleased — advertised defaults and wording match the local engine
 
 **No version bump, no publish.** Same defect class as the entry below, found while fixing it and

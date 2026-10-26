@@ -148,6 +148,36 @@ Two properties are worth stating plainly, because they are the product:
 - **`manage` has no `approve` action.** There is no path from an agent to a confirmed memory.
   That is not an omission; it is the design.
 
+## Response shapes
+
+`tools/list` is one surface for both engines, and an answer should be too: a model that has
+to branch on which engine replied will eventually branch wrong. `board` therefore answers
+the app's shape, field for field — `items`, `unread`, `count`, `cursor`, `reader` — and
+`cursor` is the id of the newest card, the same kind of value the app returns.
+
+The cursor is what a poll carries *across* an engine switch, which is why it gets the space.
+Under `auto` one call can be answered by the app and the next by the local store. Until 0.1.8
+the local engine answered a float epoch timestamp and read the app's card id with `float()`,
+so a cursor fetched from the app came back as a full re-read of the board and nothing said
+so; a float sent the other way matched no card id, and the app answered with its newest
+`limit`, equally quietly.
+
+A cursor can still fail to resolve: its card expired (cards live 24 hours by default), or it
+was issued by the other engine, whose ids are `CB…` in the app and `msg_…` here. Neither
+engine can resume from that, so both return the newest window — but this one also sets
+`since_unknown` and a `note` saying which of those happened. `unread` counts every live card
+after the cursor and `count` counts what the answer carries, so `unread > count` means the
+page did not cover everything waiting, and the `note` says so in words.
+
+Three shapes are **not** unified, because the engines really do hold different data:
+
+- a `recall` entry names its vault `vault` from the local store and `wh` from the app;
+- `get_context` returns one flat `digest` locally and one bucket per warehouse (`context`,
+  keyed by warehouse name) from the app;
+- `roster` entries share `agent_id`; locally they also carry `messages` and `last_seen`,
+  while the app adds its registry card — display name, seat, leases, current task — which a
+  SQLite file has no way to know.
+
 ## Confirming what agents propose
 
 Agents propose. You confirm. The confirmation lives in a terminal, in a command you have to
