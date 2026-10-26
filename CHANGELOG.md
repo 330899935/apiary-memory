@@ -27,6 +27,10 @@ satisfy the check. This release adds the token and nothing else.
 - `README.md`: added the registry ownership marker `<!-- mcp-name: io.github.330899935/hive-memory -->`
   directly under the title. It is an HTML comment — invisible when rendered on PyPI or GitHub.
 
+Verified 2026-10-26 on a clean venv (no Hive app, HIVE_MODE=local): initialize → 2024-11-05, tools/list → 6 tools. (post-release note)
+
+Note: default HIVE_MODE=auto forwards to a Hive app on 127.0.0.1:8768 when one answers, and returns that app's reply verbatim; the bundled engine is only used when no app answers. Pin HIVE_MODE=local to test the package alone.
+
 ---
 
 ## 0.1.7 — 2026-10-23
