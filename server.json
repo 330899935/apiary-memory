@@ -3,7 +3,7 @@
   "name": "io.github.330899935/hive-memory",
   "title": "Memory Hive",
   "description": "Local-first memory over MCP. Built-in SQLite store; runs standalone. Agents propose; you confirm.",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "websiteUrl": "https://hello-fengchao.com",
   "repository": {
     "url": "https://github.com/330899935/memory-hive-mcp",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "memory-hive-mcp",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "transport": {
         "type": "stdio"
       },

@@ -156,7 +156,7 @@ the app's shape, field for field — `items`, `unread`, `count`, `cursor`, `read
 `cursor` is the id of the newest card, the same kind of value the app returns.
 
 The cursor is what a poll carries *across* an engine switch, which is why it gets the space.
-Under `auto` one call can be answered by the app and the next by the local store. Until 0.1.8
+Under `auto` one call can be answered by the app and the next by the local store. Before 0.1.9
 the local engine answered a float epoch timestamp and read the app's card id with `float()`,
 so a cursor fetched from the app came back as a full re-read of the board and nothing said
 so; a float sent the other way matched no card id, and the app answered with its newest

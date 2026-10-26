@@ -12,14 +12,39 @@ versions may change configuration.
 
 ---
 
-## Unreleased — one cursor, one board shape, and no silent restart
+## 0.1.9 — 2026-10-26
 
-**No version bump, no publish.** Same defect class as the two entries below, on the side those
-did not touch: the *answer*. `tools.json` declared `board.since` as a string and the app
-returns a card id; the local engine answered `messages`/`total` and a float epoch timestamp.
-Under `HIVE_MODE=auto` that was not a cosmetic difference — it was two silent re-reads.
+**One defect class, three faces: the local engine now answers what `tools/list` promises, or
+declines to promise it.** `tools.json` mirrors the Hive app because the two engines are meant
+to be interchangeable, and under `HIVE_MODE=auto` a client cannot tell which one replied.
+Where the local store could not honour an advertised input, default, wording, or answer shape,
+it answered something else and said nothing. This release closes that on all four faces — the
+inputs it never read, the defaults it ignored, the prose it could not deliver, and the cursor
+it silently discarded.
 
-### Why
+Taken together:
+
+| Face | Was | Is |
+|---|---|---|
+| `recall.query_vector`, `propose.vector` | advertised, never read | omitted from `tools/list` where no embedder exists |
+| `recall.limit` / `compact`, `say.ttl` | declared 10 / true / 24h, answered 8 / full / never | one constant each, echoed back |
+| `recall.query` description | "matched semantically" | narrowed to the lexical ranker it has |
+| `board` cursor and fields | float epoch, `messages`/`total` | card id, `items`/`unread`/`count`/`reader`, `since_unknown` when unplaceable |
+
+No new tool, no removed tool, no dependency change. `remote` mode relays the app's own surface
+verbatim in every case: the app is the only engine `remote` can reach, so there is nothing for
+this package to narrow there.
+
+---
+
+### Board: one cursor, one shape, and no silent restart
+
+**The answer side, on the face the two entries below did not touch.** `tools.json` declared
+`board.since` as a string and the app returns a card id; the local engine answered
+`messages`/`total` and a float epoch timestamp. Under `HIVE_MODE=auto` that was not a
+cosmetic difference — it was two silent re-reads.
+
+#### Why
 
 The cursor is the one value a caller carries *across* an engine switch, and `auto` switches
 engines without warning.
@@ -36,7 +61,7 @@ The same split ran through the answer: `items`/`unread`/`count`/`reader` upstrea
 `messages`/`total` here, so a model reading a board had to know which engine replied before it
 could read a field.
 
-### Changed
+#### Changed
 
 - `store.board()`: the cursor is a **card id**, the same string the app returns, and `since`
   takes it back. The `float()` parse is gone.
@@ -72,7 +97,7 @@ Not changed: the item-level keys inside `items` (`created`, `refs`, `stage` here
 because the app's card carries lifecycle state and a ref *count* this store does not have, and
 a rename would have to invent them.
 
-### Verified
+#### Verified
 
 Local, `HIVE_MODE=local` against a throwaway `HIVE_DB` (the whole suite of 61 tests is this
 path): a fresh board answers `cursor` `""` with `unread`/`count` 0; three cards answer
@@ -86,13 +111,13 @@ agent credential, and reading its code is the check that does not require one.
 
 ---
 
-## Unreleased — advertised defaults and wording match the local engine
+### Defaults and wording: what is advertised is what is answered
 
-**No version bump, no publish.** Same defect class as the entry below, found while fixing it and
-left for its own change: `tools.json` advertised something the local engine did not do, so a
-client that trusted `tools/list` got a different answer and was told nothing.
+**Found while fixing the entry below and left for its own change:** `tools.json` advertised
+something the local engine did not do, so a client that trusted `tools/list` got a different
+answer and was told nothing.
 
-### Why
+#### Why
 
 Two promises had drifted, both invisible from the caller's side.
 
@@ -108,7 +133,7 @@ Two promises had drifted, both invisible from the caller's side.
    nudge. A model that read the old sentence wrote a paraphrased query, got a miss, and was told
    nothing.
 
-### Changed
+#### Changed
 
 - `store.py`: every default is a named constant now — `DEFAULT_RECALL_LIMIT = 10`,
   `DEFAULT_RECALL_COMPACT = True`, `DEFAULT_CONTEXT_LIMIT = 8`, `DEFAULT_BOARD_LIMIT = 20`,
@@ -133,7 +158,7 @@ Two promises had drifted, both invisible from the caller's side.
   of them; four pin the wording (lexical locally, restated under `auto`, verbatim under `remote`,
   and every override must describe a declared property). 50 tests, all green.
 
-### Verified
+#### Verified
 
 Real runs, 2026-10-26. Local cases: `HIVE_MODE=local`, dead port `127.0.0.1:1`, throwaway
 `HIVE_DB` seeded with 12 confirmed memories and 25 board cards. Remote cases: the dev Hive at
@@ -158,24 +183,23 @@ The app was also called directly with no `limit`: 10 results out of 962 matching
 bodies trimmed to 500 characters — the advertised defaults are the backend's real ones, which is
 why the engine moved and the schema did not.
 
-### Deliberately not changed
+#### Deliberately not changed
 
 - `propose.vault` keeps the local default of the store's `DEFAULT_VAULT`. The app declares no
   default here (its `vault` is only a suggestion, empty when omitted) and `tools.json` declares
   none either, so nothing is advertised that this engine contradicts.
 - `manage`'s local `list_pending` accepts a `limit` the schema does not declare. Accepting an
   unadvertised argument is not a false claim; advertising one that gets ignored would be.
-- No version bump, no publish, no change to the `memory-hive-ios` repo or the stale 0.1.0
-  baseline tree.
+- No change to the `memory-hive-ios` repo or the stale 0.1.0 baseline tree.
 
 ---
 
-## Unreleased — serves the embedding inputs only where they work
+### Embedding inputs: served only where they work
 
-**No version bump, no publish.** Released or not is the owner's call; this keeps the
-fix reviewable on its own.
+**The face that started this.** Two advertised inputs were never read: a client that followed
+`tools/list` supplied an embedding, got lexical results, and was told nothing.
 
-### Why
+#### Why
 
 0.1.8's `tools.json` mirrors the app, which really does accept two precomputed-embedding
 inputs: `recall.query_vector` and `propose.vector`. The local store has no embedder at all
@@ -184,7 +208,7 @@ either argument. A client that followed `tools/list` therefore supplied an embed
 lexical results, and was told nothing about the substitution — the same class of dishonesty
 as inventing a tool result, and the one `stdio.py` already refuses on the error path.
 
-### Changed
+#### Changed
 
 - `stdio.py`: `tools/list` is narrowed per engine. `local` and `auto` serve the surface minus
   `recall.query_vector` / `propose.vector`; `remote` relays the app's own list verbatim,
@@ -196,7 +220,7 @@ as inventing a tool result, and the one `stdio.py` already refuses on the error 
   fidelity tests still compare it against the recorded backend snapshot.
 - `README.md`: states that the two embedding inputs exist only where the app answers.
 
-### Verified
+#### Verified
 
 Real runs, no app, dead port, throwaway `HIVE_DB`, 2026-10-26:
 
@@ -545,6 +569,9 @@ First public release.
 
 | Version | Date | Kind | Still installable |
 | --- | --- | --- | --- |
+| 0.1.9 | 2026-10-26 | local engine answers what `tools/list` promises: inputs, defaults, wording, board shape | yes |
+| 0.1.8 | 2026-10-24 | documentation only: standalone verification and `HIVE_MODE=auto` behaviour | yes |
+| 0.1.7 | 2026-10-23 | a memory engine of its own: `hive_mcp.store`, `auto` mode, and a CLI | yes |
 | 0.1.6 | 2026-10-22 | TDQS-oriented tool definitions, annotations, Dockerfile, quiet stderr | yes |
 | 0.1.5 | 2026-10-22 | completes 0.1.4's credential hint (it was on the wrong code path) | yes |
 | 0.1.4 | 2026-10-22 | correctness: proxy-safe error path, schema fidelity, protocol floor | yes |
