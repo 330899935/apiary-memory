@@ -51,6 +51,26 @@ DISCARDED = "discarded"
 
 DEFAULT_VAULT = "current"
 
+# The defaults the MCP surface advertises, and therefore the defaults this engine
+# applies. ``tools.json`` mirrors the app, and the app uses exactly these numbers
+# (mcp_server.py: ``limit = 10`` for recall, ``args.get('compact', True)``,
+# ``limit = 8`` per vault for get_context, ``limit = 20`` for board, and
+# ``CARD_TTL_DEFAULT = 24 * 3600`` clamped to 60 s .. 30 days for say). Naming
+# each promise once is what stops the two from drifting again: 0.1.8 advertised
+# ``recall.limit`` 10 and answered 8, advertised ``compact`` true and answered
+# false, and advertised a 24-hour card and then stored one that never expired.
+# A literal repeated in a signature and in a call site is a promise with two
+# sources of truth; ``tests/test_bridge.py`` now checks both the behaviour below
+# and the numbers advertised in ``tools.json`` against these names.
+DEFAULT_RECALL_LIMIT = 10
+DEFAULT_RECALL_COMPACT = True
+DEFAULT_CONTEXT_LIMIT = 8
+DEFAULT_BOARD_LIMIT = 20
+DEFAULT_PENDING_LIMIT = 20
+DEFAULT_SAY_TTL = 24 * 3600
+SAY_TTL_MIN = 60
+SAY_TTL_MAX = 30 * 24 * 3600
+
 # Soft-deleted rows stay on disk so `restore` can undo `forget`. Only
 # `discard_pending` physically removes a row, because that entry was never part
 # of the user's memory in the first place — the tool description promises
@@ -301,6 +321,24 @@ def _clean(text, limit):
     return re.sub(r"\s+", " ", (text or "")).strip()[:limit]
 
 
+def _ttl_seconds(ttl):
+    """How long a board card lives, mirroring the app rather than inventing a rule.
+
+    The app treats an absent or non-numeric ``ttl`` as 24 hours and clamps every
+    value to 60 s .. 30 days, so that no card is immortal and none is invisible
+    the moment it is posted. This engine used to store ``expires = NULL`` for
+    anything falsy while its own ``tools.json`` said "Defaults to 24 hours" - the
+    card outlived the promise silently, which is the same defect as a default
+    that answers 8 where 10 was advertised. ``0`` becomes 60 s here exactly as it
+    does in the app; "forever" is not an option either engine offers.
+    """
+    try:
+        secs = int(ttl) if ttl is not None else DEFAULT_SAY_TTL
+    except (TypeError, ValueError):
+        secs = DEFAULT_SAY_TTL
+    return max(SAY_TTL_MIN, min(SAY_TTL_MAX, secs))
+
+
 class Store(object):
     """The memory file. One instance per process is enough."""
 
@@ -447,7 +485,8 @@ class Store(object):
         self.conn.commit()
         return {"ok": True, "id": mem_id, "state": "dropped"}
 
-    def say(self, summary, to="", kind="data", stage="", task_id="", refs=None, ttl=0, actor=""):
+    def say(self, summary, to="", kind="data", stage="", task_id="", refs=None,
+            ttl=DEFAULT_SAY_TTL, actor=""):
         """Post to the shared board. The board is coordination, not memory."""
         summary = (summary or "").strip()
         if not summary:
@@ -458,7 +497,8 @@ class Store(object):
             raise StoreError("`stage` must be: start, handoff, done, blocked")
         now = time.time()
         msg_id = _new_id("msg")
-        expires = now + int(ttl) if ttl and int(ttl) > 0 else None
+        ttl = _ttl_seconds(ttl)
+        expires = now + ttl
         self.conn.execute(
             "INSERT INTO board(id, summary, to_agent, kind, stage, task_id, refs,"
             " actor, created, expires) VALUES(?,?,?,?,?,?,?,?,?,?)",
@@ -476,16 +516,25 @@ class Store(object):
             ),
         )
         self.conn.commit()
-        return {"ok": True, "id": msg_id, "created": _iso(now)}
+        # `ttl` and `expires` are echoed because the effective lifetime is the
+        # only way a caller can see that omitting ttl capped the card at a day.
+        return {
+            "ok": True,
+            "id": msg_id,
+            "created": _iso(now),
+            "ttl": ttl,
+            "expires": _iso(expires),
+        }
 
     # -- reads ------------------------------------------------------------- #
 
-    def recall(self, query, limit=8, vaults=None, compact=False):
+    def recall(self, query, limit=DEFAULT_RECALL_LIMIT, vaults=None,
+               compact=DEFAULT_RECALL_COMPACT):
         """Rank confirmed memory against a natural-language query."""
         try:
             limit = int(limit)
         except (TypeError, ValueError):
-            limit = 8
+            limit = DEFAULT_RECALL_LIMIT
         limit = max(1, min(limit, 50))
         query = (query or "").strip()
         query_tokens = tokenize(query)
@@ -563,12 +612,12 @@ class Store(object):
             )
         return response
 
-    def get_context(self, limit=8):
+    def get_context(self, limit=DEFAULT_CONTEXT_LIMIT):
         """A digest of what the human has confirmed most recently."""
         try:
             limit = int(limit)
         except (TypeError, ValueError):
-            limit = 8
+            limit = DEFAULT_CONTEXT_LIMIT
         limit = max(1, min(limit, 30))
         rows = self.conn.execute(
             "SELECT id, title, content, vault, tags, confirmed_at, created"
@@ -624,11 +673,11 @@ class Store(object):
             "mode": "local",
         }
 
-    def list_pending(self, limit=20):
+    def list_pending(self, limit=DEFAULT_PENDING_LIMIT):
         try:
             limit = int(limit)
         except (TypeError, ValueError):
-            limit = 20
+            limit = DEFAULT_PENDING_LIMIT
         limit = max(1, min(limit, 100))
         rows = self.conn.execute(
             "SELECT id, title, content, vault, created FROM memories WHERE state = ?"
@@ -660,11 +709,11 @@ class Store(object):
             ),
         }
 
-    def board(self, limit=20, since=0, roster=False):
+    def board(self, limit=DEFAULT_BOARD_LIMIT, since=0, roster=False):
         try:
             limit = int(limit)
         except (TypeError, ValueError):
-            limit = 20
+            limit = DEFAULT_BOARD_LIMIT
         limit = max(1, min(limit, 100))
         try:
             since = float(since or 0)

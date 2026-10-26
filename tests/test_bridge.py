@@ -1,6 +1,6 @@
 """Tests for the bridge. Standard library only — no test dependencies.
 
-Four groups, each pinning a contract that has already been broken once:
+Six groups, each pinning a contract that has already been broken once:
 
 ``OfflineBehaviour``
     What a machine with no Hive app gets. The handshake and tool discovery must
@@ -13,6 +13,18 @@ Four groups, each pinning a contract that has already been broken once:
     2026-10-22 regression: with an HTTP proxy in the environment, a loopback
     call came back as a bare "HTTP 502" with no endpoint and no fix. Tests were
     also not closed, so "14 tests OK" depended on the runner's shell.
+
+``LocalCapabilitySurface``
+    2026-10-26 regression, two cases of one defect. ``tools/list`` advertised
+    ``recall.query_vector`` and ``propose.vector`` from an engine with no
+    embedder, and described a bigram ranker as "semantically, not by substring".
+    Inputs and wording are both narrowed to the engine that will answer.
+
+``AdvertisedDefaults``
+    Same defect, numbers instead of words: the schema's defaults and the
+    engine's defaults were maintained separately, so an omitted ``limit``,
+    ``compact`` or ``ttl`` answered something the schema never promised. Each
+    test compares the answer against the number ``tools.json`` declares.
 
 ``SchemaFidelity``
     2026-10-22 regression: ``tools.json`` was a hand-rewrite, not a mirror. It
@@ -583,8 +595,8 @@ class LocalCapabilitySurface(unittest.TestCase):
 
     HIDDEN = {"recall": "query_vector", "propose": "vector"}
 
-    def _tools(self, env_extra, app=None):
-        """tools/list properties per tool, optionally against a fake app.
+    def _components(self, env_extra, app=None):
+        """The full ``tools/list`` answer, optionally against a fake app.
 
         ``app`` is the list the fake backend returns from ``tools/list``; when
         omitted the backend is simply unreachable.
@@ -636,10 +648,20 @@ class LocalCapabilitySurface(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
         self.assertIn("result", resp, f"tools/list failed: {resp}")
+        return resp["result"]["tools"]
+
+    def _tools(self, env_extra, app=None):
+        """tools/list properties per tool, optionally against a fake app."""
         return {
             tool["name"]: set(tool["inputSchema"].get("properties") or {})
-            for tool in resp["result"]["tools"]
+            for tool in self._components(env_extra, app)
         }
+
+    def _description(self, tools, tool_name, prop):
+        for tool in tools:
+            if tool.get("name") == tool_name:
+                return tool["inputSchema"]["properties"][prop].get("description")
+        return None
 
     def _assert_hidden(self, props, why):
         for tool, hidden in self.HIDDEN.items():
@@ -783,6 +805,225 @@ class LocalCapabilitySurface(unittest.TestCase):
                             f"{tool}.{arg} is omitted, but Store.{tool} accepts it - "
                             f"the omission is now a lie in the other direction",
                         )
+
+    # -- prose is a claim too ------------------------------------------------ #
+
+    APP_CLAIM = "Matched semantically, not by substring."
+
+    def _app_with_claim(self):
+        """The app's surface carrying the claim the local engine cannot keep."""
+        return [
+            {
+                "name": "recall",
+                "description": "app recall",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": self.APP_CLAIM},
+                        "query_vector": {"type": "array"},
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
+                "name": "propose",
+                "description": "app propose",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string"},
+                        "vector": {"type": "array"},
+                    },
+                    "required": ["content"],
+                },
+            },
+        ]
+
+    def test_local_mode_does_not_claim_semantic_matching(self):
+        """The local ranker is words and character bigrams, so say that.
+
+        0.1.8 served "Matched semantically, not by substring" from an engine
+        whose entire ranker is ``store.tokenize`` plus a recency nudge. A model
+        reading that plans around a capability it was never going to get: it
+        writes a paraphrased query, gets a miss, and is told nothing.
+        """
+        text = self._description(
+            self._components({"HIVE_MODE": "local"}), "recall", "query"
+        )
+        self.assertNotIn("semantic", text.lower())
+        self.assertIn("bigram", text.lower())
+        self.assertIn("words", text.lower())
+
+    def test_auto_mode_restates_the_apps_claim_when_the_app_answers(self):
+        """auto may fall back mid-session, so it cannot keep a richer promise."""
+        text = self._description(
+            self._components({"HIVE_MODE": "auto"}, app=self._app_with_claim()),
+            "recall", "query",
+        )
+        self.assertNotEqual(text, self.APP_CLAIM)
+        self.assertNotIn("semantic", text.lower())
+
+    def test_remote_mode_relays_the_apps_claim_verbatim(self):
+        """remote only reaches the app, which does rank by meaning on request."""
+        text = self._description(
+            self._components({"HIVE_MODE": "remote"}, app=self._app_with_claim()),
+            "recall", "query",
+        )
+        self.assertEqual(text, self.APP_CLAIM)
+
+    def test_the_wording_map_describes_real_declared_properties(self):
+        """An override must replace declared text, and must actually differ.
+
+        Otherwise it is dead weight that looks like a fix, or a restatement of a
+        property this engine does not serve at all.
+        """
+        sys.path.insert(0, str(PKG_DIR.parent))
+        from hive_mcp import stdio  # noqa: E402  (test-local import)
+
+        with open(TOOLS_JSON, encoding="utf-8") as fh:
+            declared = {
+                t["name"]: (t.get("inputSchema") or {}).get("properties") or {}
+                for t in json.load(fh)["tools"]
+            }
+        for tool, props in stdio.LOCAL_PROPERTY_TEXT.items():
+            for prop, text in props.items():
+                with self.subTest(tool=tool, prop=prop):
+                    self.assertIn(prop, declared.get(tool, {}),
+                                  f"{tool}.{prop} is restated but never declared")
+                    self.assertNotIn(
+                        prop, stdio.LOCAL_UNSUPPORTED_ARGUMENTS.get(tool, ()),
+                        f"{tool}.{prop} cannot be both described and dropped",
+                    )
+                    self.assertNotEqual(
+                        declared[tool][prop].get("description"), text,
+                        f"{tool}.{prop} override merely repeats tools.json",
+                    )
+
+
+class AdvertisedDefaults(unittest.TestCase):
+    """An omitted argument must behave the way the schema says it will.
+
+    2026-10-26 regression, second case of the same defect: ``tools.json``
+    declared ``recall.limit`` 10, ``recall.compact`` true and ``say.ttl``
+    "24 hours" while ``local_call()`` answered 8 results, full bodies, and a
+    board card that never expired. A client that trusts a default is doing
+    exactly what the schema invited, so this drift is silent by construction -
+    the only defence is to compare the answer against the declared number rather
+    than against a second hand-written expectation.
+    """
+
+    MEMORIES = 14   # more than recall's and get_context's default, so the cap shows
+    BOARD = 25      # more than board's default
+    # Longer than the 160 characters a compact recall returns, so trimming is
+    # observable rather than inferred.
+    BODY = "关于蜂巢检索默认值的测试条目，用来验证 compact 与 limit 的默认值。" * 6
+
+    def setUp(self):
+        with open(TOOLS_JSON, encoding="utf-8") as fh:
+            self.declared = {
+                t["name"]: (t.get("inputSchema") or {}).get("properties") or {}
+                for t in json.load(fh)["tools"]
+            }
+        self.db = _fresh_db()
+        sys.path.insert(0, str(PKG_DIR.parent))
+        from hive_mcp.store import Store  # noqa: E402  (test-local import)
+
+        store = Store(self.db)
+        try:
+            ids = [
+                store.propose(
+                    self.BODY + " 编号%02d" % i,
+                    title="probe-%02d" % i,
+                )["id"]
+                for i in range(self.MEMORIES)
+            ]
+            store.approve(ids=ids)
+            for i in range(self.BOARD):
+                store.say("probe board message %02d" % i, ttl=86400)
+        finally:
+            store.close()
+
+    def _call(self, name, arguments):
+        resp = one(
+            [{
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {"name": name, "arguments": arguments},
+            }],
+            {"HIVE_MCP_URL": DEAD, "HIVE_MODE": "local", "HIVE_DB": self.db},
+        )
+        self.assertIn("result", resp, f"{name} failed locally: {resp}")
+        return json.loads(resp["result"]["content"][0]["text"])
+
+    def _stored(self, mem_id):
+        from hive_mcp.store import Store  # noqa: E402  (test-local import)
+
+        store = Store(self.db)
+        try:
+            return store.conn.execute(
+                "SELECT content FROM memories WHERE id = ?", (mem_id,)
+            ).fetchone()["content"]
+        finally:
+            store.close()
+
+    def test_recall_limit_default(self):
+        advertised = self.declared["recall"]["limit"]["default"]
+        self.assertLess(advertised, self.MEMORIES,
+                        "the seed must exceed the default or this proves nothing")
+        got = self._call("recall", {"query": "蜂巢 检索 默认值"})
+        self.assertEqual(len(got["results"]), advertised,
+                         f"advertised {advertised}, answered {len(got['results'])}")
+        self.assertEqual(got["total"], advertised)
+
+    def test_recall_compact_default(self):
+        """compact:true promises trimmed bodies, not full ones."""
+        advertised = self.declared["recall"]["compact"]["default"]
+        got = self._call("recall", {"query": "蜂巢 检索 默认值"})
+        self.assertTrue(got["results"], got)
+        content = got["results"][0]["content"]
+        full = self._stored(got["results"][0]["id"])
+        self.assertGreater(len(full), 160, "the seed is too short to show trimming")
+        if advertised:
+            self.assertEqual(len(content), 160,
+                             "compact defaults to true, so the body must be trimmed")
+        else:
+            self.assertEqual(content, full)
+
+    def test_get_context_limit_default(self):
+        advertised = self.declared["get_context"]["limit"]["default"]
+        self.assertLess(advertised, self.MEMORIES)
+        got = self._call("get_context", {})
+        self.assertEqual(len(got["digest"]), advertised)
+
+    def test_board_limit_default(self):
+        advertised = self.declared["board"]["limit"]["default"]
+        self.assertLess(advertised, self.BOARD)
+        got = self._call("board", {})
+        self.assertEqual(len(got["messages"]), advertised)
+
+    def test_say_default_ttl(self):
+        """The card must expire when the description says it will."""
+        self.assertIn("24 hours", self.declared["say"]["ttl"]["description"])
+        got = self._call("say", {"summary": "probe default ttl"})
+        self.assertEqual(got["ttl"], 24 * 3600, got)
+
+        from hive_mcp.store import Store  # noqa: E402  (test-local import)
+
+        store = Store(self.db)
+        try:
+            row = store.conn.execute(
+                "SELECT created, expires FROM board WHERE id = ?", (got["id"],)
+            ).fetchone()
+        finally:
+            store.close()
+        self.assertIsNotNone(row["expires"], "the card was stored immortal")
+        self.assertEqual(round(row["expires"] - row["created"]), 24 * 3600)
+
+    def test_say_ttl_is_clamped_not_immortal(self):
+        """Neither engine offers "forever": the app clamps to 60 s .. 30 days."""
+        zero = self._call("say", {"summary": "probe ttl zero", "ttl": 0})
+        huge = self._call("say", {"summary": "probe ttl huge", "ttl": 10 ** 9})
+        self.assertEqual(zero["ttl"], 60, zero)
+        self.assertEqual(huge["ttl"], 30 * 24 * 3600, huge)
 
 
 class SchemaFidelity(unittest.TestCase):

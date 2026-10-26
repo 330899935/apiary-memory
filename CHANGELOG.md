@@ -12,6 +12,90 @@ versions may change configuration.
 
 ---
 
+## Unreleased — advertised defaults and wording match the local engine
+
+**No version bump, no publish.** Same defect class as the entry below, found while fixing it and
+left for its own change: `tools.json` advertised something the local engine did not do, so a
+client that trusted `tools/list` got a different answer and was told nothing.
+
+### Why
+
+Two promises had drifted, both invisible from the caller's side.
+
+1. **Defaults.** `tools.json` mirrors the app, which answers an omitted `limit` with 10, an
+   omitted `compact` with `true`, and an omitted `ttl` with 24 hours. `local_call()` answered 8,
+   full bodies, and board cards with `expires = NULL` — never. Each number was typed twice, once
+   in the schema and once in the engine, and only one copy was maintained.
+2. **Wording.** `recall.query` was described as "Matched semantically, not by substring." That
+   is true of the app only through `query_vector` (cosine over a stored vector). Neither engine's
+   *text* path is semantic: the app's is an inverted index with IDF weighting, synonym expansion
+   and time decay (`index.py`: `search_memories`, `expand_query`), and the local store's is
+   `store.tokenize()` — character bigrams plus Latin words — with a verbatim bonus and a recency
+   nudge. A model that read the old sentence wrote a paraphrased query, got a miss, and was told
+   nothing.
+
+### Changed
+
+- `store.py`: every default is a named constant now — `DEFAULT_RECALL_LIMIT = 10`,
+  `DEFAULT_RECALL_COMPACT = True`, `DEFAULT_CONTEXT_LIMIT = 8`, `DEFAULT_BOARD_LIMIT = 20`,
+  `DEFAULT_PENDING_LIMIT = 20`, `DEFAULT_SAY_TTL = 24 * 3600` — used as the parameter default and
+  as the fallback for an unusable value, so each promise has one number instead of one per call
+  site.
+- `store.say`: `ttl` defaults to 24 hours and is clamped to 60 s … 30 days, mirroring the app
+  (`CARD_TTL_DEFAULT`, `max(60, min(30 days, ttl))`). `0` therefore means 60 seconds, as it does
+  in the app, and "forever" is no longer reachable. The response echoes `ttl` and `expires`, so
+  the effective lifetime is visible rather than inferred.
+- `stdio.local_call()`: takes its fallbacks from those constants instead of literals.
+- `stdio.py`: prose is narrowed the way parameters are. `LOCAL_PROPERTY_TEXT` sits beside
+  `LOCAL_UNSUPPORTED_ARGUMENTS`, and `_narrow_for_local()` applies both — `local` and `auto` serve
+  the lexical wording, `remote` relays the app's own description verbatim.
+- `tools.json`: `recall.query` no longer claims semantic text matching; it states what the app
+  does and points at `query_vector` for meaning, which keeps the file a faithful mirror of the
+  backend. `say.ttl` states the clamp.
+- `README.md`: the shared defaults, the per-engine description, and the board paragraph that used
+  to promise cards never expire.
+- `tests/test_bridge.py`: 10 new tests. Six call the bridge with the argument omitted and compare
+  the answer to the number `tools.json` declares, so a default cannot drift without failing one
+  of them; four pin the wording (lexical locally, restated under `auto`, verbatim under `remote`,
+  and every override must describe a declared property). 50 tests, all green.
+
+### Verified
+
+Real runs, 2026-10-26. Local cases: `HIVE_MODE=local`, dead port `127.0.0.1:1`, throwaway
+`HIVE_DB` seeded with 12 confirmed memories and 25 board cards. Remote cases: the dev Hive at
+`http://127.0.0.1:8768/mcp`, identity confirmed first through `/api/about` (data_dir
+`母巢观察窗_v0.1`, v1.4.6, 1294 entries).
+
+| Omitted argument | Advertised | Before | After |
+| --- | --- | --- | --- |
+| `recall.limit` (12 matching rows) | 10 | 8 results | 10 results |
+| `recall.compact` (251-character body) | true | 251 characters | 160 characters |
+| `get_context.limit` (12 rows) | 8 | 8 | 8 |
+| `board.limit` (25 cards) | 20 | 20 | 20 |
+| `say.ttl` | 24 hours | never expires | 86400 s |
+| `say.ttl` = 0 | clamped | never expires | 60 s |
+
+| Served `recall.query` | `local` | `auto` (app answering) | `remote` (app answering) |
+| --- | --- | --- | --- |
+| `query_vector` offered | no | no | yes |
+| description claims semantic text matching | no | no | the app's own text, verbatim |
+
+The app was also called directly with no `limit`: 10 results out of 962 matching entries with
+bodies trimmed to 500 characters — the advertised defaults are the backend's real ones, which is
+why the engine moved and the schema did not.
+
+### Deliberately not changed
+
+- `propose.vault` keeps the local default of the store's `DEFAULT_VAULT`. The app declares no
+  default here (its `vault` is only a suggestion, empty when omitted) and `tools.json` declares
+  none either, so nothing is advertised that this engine contradicts.
+- `manage`'s local `list_pending` accepts a `limit` the schema does not declare. Accepting an
+  unadvertised argument is not a false claim; advertising one that gets ignored would be.
+- No version bump, no publish, no change to the `memory-hive-ios` repo or the stale 0.1.0
+  baseline tree.
+
+---
+
 ## Unreleased — serves the embedding inputs only where they work
 
 **No version bump, no publish.** Released or not is the owner's call; this keeps the

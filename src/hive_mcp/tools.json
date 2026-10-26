@@ -1,5 +1,5 @@
 {
-  "$comment": "OFFLINE FALLBACK SNAPSHOT of the tool surface - not a second source of truth. When the Hive is reachable, tools/list is relayed from the backend. This file mirrors the BACKEND, which is why it carries recall.query_vector and propose.vector although the local store has no embedder: stdio.py narrows the served list per engine at request time (LOCAL_UNSUPPORTED_ARGUMENTS), so a machine the local engine serves is never told it can send an embedding. Directory crawlers index the local path, so this file must stay both truthful and high-scoring (Glama TDQS). tests/test_bridge.py enforces agreement with tests/backend_tools_snapshot.json and enforces the runtime narrowing.",
+  "$comment": "OFFLINE FALLBACK SNAPSHOT of the tool surface - not a second source of truth. When the Hive is reachable, tools/list is relayed from the backend. This file mirrors the BACKEND, which is why it carries recall.query_vector and propose.vector although the local store has no embedder: stdio.py narrows the served list per engine at request time (LOCAL_UNSUPPORTED_ARGUMENTS for inputs, LOCAL_PROPERTY_TEXT for wording), so a machine the local engine serves is never told it can send an embedding, and never told its text query is ranked semantically. Defaults declared here are the defaults BOTH engines apply: store.py holds each one as a named constant and tests check the two against each other. Directory crawlers index the local path, so this file must stay both truthful and high-scoring (Glama TDQS). tests/test_bridge.py enforces agreement with tests/backend_tools_snapshot.json and enforces the runtime narrowing.",
   "tools": [
     {
       "name": "recall",
@@ -16,7 +16,7 @@
         "properties": {
           "query": {
             "type": "string",
-            "description": "Natural-language search text, e.g. 'what did we decide about the pricing page'. Matched semantically, not by substring."
+            "description": "Natural-language search text, e.g. 'what did we decide about the pricing page'. Ranked by the Hive's index of words and character bigrams, with synonym expansion and a recency nudge; supply query_vector to rank by meaning instead."
           },
           "limit": {
             "type": "integer",
@@ -172,7 +172,7 @@
           },
           "ttl": {
             "type": "integer",
-            "description": "Seconds after which the message stops being returned by board. Defaults to 24 hours."
+            "description": "Seconds after which the message stops being returned by board. Defaults to 24 hours, and is clamped to between 60 seconds and 30 days so no card is immortal."
           }
         },
         "required": ["summary"]

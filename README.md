@@ -120,6 +120,18 @@ store has no embedder, so `tools/list` omits those two wherever the local store 
 including under `auto` where the app might stop answering mid-session. A field that would be
 accepted and silently ignored is not advertised at all.
 
+The same rule covers wording. `recall.query` is described as the lexical ranker it is wherever
+the local store can answer — words and character bigrams, no embeddings — and as the app's
+index-based ranking with `query_vector` for meaning wherever only the app can answer. A
+description is a claim about what will happen to the input, so it is narrowed with the inputs.
+
+Defaults are not narrowed, they are shared. Omit `limit` and you get 10 from `recall` and 8 from
+`get_context`; omit `compact` and bodies come back trimmed; omit `ttl` on `say` and the card
+lives 24 hours. Both engines answer those numbers identically, because a default is a number in
+the schema rather than a capability one engine lacks. `store.py` holds each one as a named
+constant, and the tests compare the answer against the advertised number instead of a second
+hand-written copy of it.
+
 | Tool | Kind | What it is for |
 | --- | --- | --- |
 | `recall` | read | Search confirmed memory by topic. `{"query": "..."}` plus optional `limit`, `vaults`, `compact`. |
@@ -162,8 +174,9 @@ environment.
 `~/.memory-hive/hive.db`, unless `HIVE_DB` says otherwise. One SQLite file; copy it to back it
 up, delete it to start over.
 
-The board keeps its messages in the same file and does not expire them unless a `ttl` was given,
-so there is only ever one thing to back up.
+The board keeps its messages in the same file, so there is only ever one thing to back up. Cards
+expire: 24 hours unless `ttl` says otherwise, clamped to between 60 seconds and 30 days, which
+is what the app does too — a board that grows forever stops being a board.
 
 ## How search works, and what it does not do
 
@@ -178,6 +191,9 @@ This is a ranker, not an understander.
 - **No semantic recall.** Ask about "money" and an entry that only says "invoice" will not be
   found. Related-word coverage needs an embedder; this package has no dependencies and does not
   pretend otherwise.
+- **The ranking is the one the description states.** `tools/list` says "words and character
+  bigrams ... no embeddings" here, and that sentence is true of this engine. It is narrowed per
+  engine like the embedding inputs are, because the app's answer to the same question differs.
 - **A miss is reported as a miss.** When nothing matches, `recall` says so and mentions how many
   entries are awaiting confirmation, rather than returning a plausible neighbour.
 
