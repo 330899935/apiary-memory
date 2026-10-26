@@ -1,0 +1,84 @@
+name: Publish to MCP Registry
+
+# Why this runs in CI instead of on the publisher's laptop:
+#
+# `mcp-publisher login github` uses the GitHub device-code flow, which is nothing
+# but POST requests to github.com. On some networks those POSTs are dropped while
+# GETs answer normally, so the flow waits forever for an authorization that has
+# already happened, with no error message to show for it. Actions has no such
+# path, and OIDC needs no secret: the job exchanges the workflow's identity token
+# for a registry token, and the registry checks it against the repository that
+# owns the `io.github.<owner>/<name>` namespace.
+#
+# Deliberately manual, not tag-triggered: the PyPI workflow owns tags, and a
+# registry entry should never appear for a version PyPI does not carry yet. Run
+# this after "Publish to PyPI" is green.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref whose server.json to publish
+        required: true
+        default: main
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC authentication; nothing else is needed
+      contents: read
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.4
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+
+      # A registry entry that names a version PyPI does not have sends people to
+      # an install that fails, so refuse before touching the registry.
+      - name: server.json must agree with pyproject, and that version must be on PyPI
+        run: |
+          set -euo pipefail
+          pyproject="$(python3 -c "import tomllib,pathlib;print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
+          manifest="$(python3 -c "import json,pathlib;print(json.loads(pathlib.Path('server.json').read_text())['version'])")"
+          echo "pyproject=$pyproject server.json=$manifest"
+          if [ "$pyproject" != "$manifest" ]; then
+            echo "::error::server.json ($manifest) does not match pyproject ($pyproject)"
+            exit 1
+          fi
+          code="$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/memory-hive-mcp/$pyproject/json")"
+          echo "PyPI /pypi/memory-hive-mcp/$pyproject/json -> $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::$pyproject is not on PyPI yet; publish there first"
+            exit 1
+          fi
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Download and verify mcp-publisher
+        run: |
+          set -euo pipefail
+          os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          arch="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')"
+          archive="mcp-publisher_${os}_${arch}.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob \
+            --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$archive"
+          tar xzf "$archive" mcp-publisher
+          rm -f "$archive" "$archive.sigstore.json"
+
+      - name: Validate server.json
+        run: ./mcp-publisher validate
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server to MCP Registry
+        run: ./mcp-publisher publish
