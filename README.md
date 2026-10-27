@@ -16,6 +16,18 @@ cloud, no daemon, no dependencies.
 pip install memory-hive-mcp
 ```
 
+**Desktop app, no terminal:** download [`memory-hive-mcp-0.1.9.mcpb`](https://github.com/330899935/memory-hive-mcp/releases/download/v0.1.9/memory-hive-mcp-0.1.9.mcpb) and double-click it.
+
+Measured on 2026-10-27, on one MacBook with the Hive running locally — script and raw output in [`bench/`](bench/):
+
+| Measure | Result |
+| --- | --- |
+| Search latency | **p95 111 ms**, p50 76 ms (warm, includes HTTP) |
+| Retrieval | correct entry in **top-5 for 97.5%** of 40 trials |
+| Corpus | **1,303 entries · 2.39 M chars · 45 days**, plaintext only |
+
+*Retrieval used each entry's own title as the query — an easy set. It shows the index is complete and ranks correctly on exact terms, not how well it answers a question asked in your own words. Run [`bench/bench_search.py`](bench/bench_search.py) on your own Hive.*
+
 ---
 
 ## What you get without the app
