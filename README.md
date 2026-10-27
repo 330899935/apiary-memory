@@ -1,6 +1,6 @@
 # Apiary Memory MCP
 
-<!-- mcp-name: io.github.330899935/hive-memory -->
+<!-- mcp-name: io.github.330899935/apiary-memory -->
 
 > **Also known as:** Apiary Memory · 记忆蜂巢 · Memory Hive · 蜂巢 ·
 > `io.github.330899935/apiary-memory` (MCP Registry name, from v0.2.0) ·
