@@ -145,7 +145,7 @@ from pathlib import Path
 # Bumped with pyproject.toml. Only used when neither a source checkout nor
 # installed metadata can answer; tests assert it matches to keep the two from
 # drifting the way 0.1.0 did.
-_FALLBACK_VERSION = "0.1.9"
+_FALLBACK_VERSION = "0.2.0"
 
 
 def _resolve_version():
@@ -175,7 +175,17 @@ def _resolve_version():
     try:
         from importlib.metadata import version as _pkg_version
 
-        return _pkg_version("memory-hive-mcp")
+        # The distribution was renamed memory-hive-mcp -> apiary-memory in 0.2.0.
+        # A source checkout, an editable install and a built wheel can each
+        # carry a different dist name, so ask for both and take the first that
+        # answers. Returning _FALLBACK_VERSION straight away would make every
+        # renamed install report a stale version over MCP.
+        for _dist in ("apiary-memory", "memory-hive-mcp"):
+            try:
+                return _pkg_version(_dist)
+            except Exception:
+                continue
+        return _FALLBACK_VERSION
     except Exception:
         return _FALLBACK_VERSION
 
@@ -251,7 +261,7 @@ MODE = (os.environ.get("HIVE_MODE") or "auto").strip().lower()
 if MODE not in ("auto", "local", "remote"):
     MODE = "auto"
 
-SERVER_NAME = "memory-hive-mcp"
+SERVER_NAME = "apiary-memory"
 APP_STORE = "https://apps.apple.com/app/id6806992983"
 
 # Offline we claim only what we actually implement. Do not raise this to a

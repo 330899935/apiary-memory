@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Memory Hive — search benchmark (read-only).
+"""Apiary Memory — search benchmark (read-only).
 
 Measures three things against a running Hive:
 

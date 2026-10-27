@@ -47,7 +47,7 @@ jobs:
             echo "::error::server.json ($manifest) does not match pyproject ($pyproject)"
             exit 1
           fi
-          code="$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/memory-hive-mcp/$pyproject/json")"
+          code="$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/apiary-memory/$pyproject/json")"
           echo "PyPI /pypi/memory-hive-mcp/$pyproject/json -> $code"
           if [ "$code" != "200" ]; then
             echo "::error::$pyproject is not on PyPI yet; publish there first"

@@ -1,8 +1,10 @@
-# Memory Hive MCP
+# Apiary Memory MCP
 
 <!-- mcp-name: io.github.330899935/hive-memory -->
 
-> **Also known as:** 记忆蜂巢 · Memory Hive · 蜂巢 · `hive-memory` (the official MCP Registry server name) · `memory-hive-mcp` (this PyPI package).
+> **Also known as:** Apiary Memory · 记忆蜂巢 · Memory Hive · 蜂巢 ·
+> `io.github.330899935/apiary-memory` (MCP Registry name, from v0.2.0) ·
+> `hive-memory` (Registry name up to v0.1.9) · `memory-hive-mcp` (PyPI package until the rename ships).
 > Not affiliated with [hive.com](https://hive.com) (team collaboration) or the `hive-mcp` Claude Code plugin.
 
 **Local-first personal memory for AI agents, over MCP.** Your agents can search what you have
@@ -16,7 +18,7 @@ cloud, no daemon, no dependencies.
 pip install memory-hive-mcp
 ```
 
-**Desktop app, no terminal:** download [`memory-hive-mcp-0.1.9.mcpb`](https://github.com/330899935/memory-hive-mcp/releases/download/v0.1.9/memory-hive-mcp-0.1.9.mcpb) and double-click it.
+**Desktop app, no terminal:** download [`memory-hive-mcp-0.1.9.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.1.9/memory-hive-mcp-0.1.9.mcpb) and double-click it.
 
 Measured on 2026-10-27, on one MacBook with the Hive running locally — script and raw output in [`bench/`](bench/):
 
@@ -54,7 +56,7 @@ rather than discovered later — see [Honest limits](#honest-limits).
 
 ## What the app adds
 
-[Memory Hive for macOS](https://apps.apple.com/app/id6806992983) is the same design with the
+[Apiary Memory for macOS](https://apps.apple.com/app/id6806992983) is the same design with the
 expensive parts built: eight vaults with four of them locked behind a PIN (Argon2id-wrapped key,
 AES-256 at rest), a daily evolution log, multi-agent identity management, and a UI for reading
 and confirming. It also answers MCP itself, with richer ranking.
@@ -87,8 +89,8 @@ library, and `sqlite3` is part of it.
 From a checkout:
 
 ```bash
-git clone https://github.com/330899935/memory-hive-mcp
-cd memory-hive-mcp
+git clone https://github.com/330899935/apiary-memory
+cd apiary-memory
 PYTHONPATH=src python -m hive_mcp.stdio
 ```
 

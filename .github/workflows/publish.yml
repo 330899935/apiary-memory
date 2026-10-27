@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/memory-hive-mcp/
+      url: https://pypi.org/project/apiary-memory/
     permissions:
       id-token: write # 可信发布必需：用来换取 PyPI 的一次性凭证
       contents: read

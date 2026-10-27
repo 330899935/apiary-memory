@@ -12,6 +12,38 @@ versions may change configuration.
 
 ---
 
+## 0.2.0 — 2026-10-27
+
+**Renamed. The distribution is now `apiary-memory`, the project is Apiary Memory, and the
+MCP Registry name is `io.github.330899935/apiary-memory`.** The old names were not unique:
+`memory-hive` and `hive-memory` are carried by a dozen unrelated projects on GitHub, by a
+different PyPI package (`hive-memory-mcp`, v0.1.0, not ours) and by an npm package, so a
+search for this project returned other people's work. A name nobody else answers to is worth
+more than a name that describes the category.
+
+What changed:
+
+- Distribution name `memory-hive-mcp` → `apiary-memory`; module `hive_mcp` unchanged.
+- `serverInfo.name` `memory-hive-mcp` → `apiary-memory`.
+- Registry identifier `io.github.330899935/hive-memory` → `.../apiary-memory`.
+- Repository `330899935/memory-hive-mcp` → `330899935/apiary-memory` (old URLs 301).
+- New entry points `apiary-memory` / `apiary-memory-cli`; the old ones are still installed and
+  are the same functions, so no existing MCP host config has to be edited.
+
+What deliberately did **not** change, because renaming any of it would destroy something the
+user already owns:
+
+- The SQLite path stays `~/.memory-hive/hive.db`. Renaming the directory would make every
+  existing install look empty — the memory would still be on disk but the server would open a
+  new, empty file. For a memory product that is data loss, not a rename.
+- `HIVE_DB`, `HIVE_MODE`, `HIVE_AGENT_ID`, `HIVE_AGENT_TOKEN`, `HIVE_MCP_URL` keep their names,
+  for the same reason: they are written into host configs we do not control.
+- The Python module stays `hive_mcp`; `from hive_mcp.stdio import main` keeps working.
+
+Upgrading: pip will not follow a rename. `pip install memory-hive-mcp` stops at 0.1.9;
+`pip install apiary-memory` gets this release. Uninstall the old distribution first, or keep
+both installed — the entry points do not collide.
+
 ## 0.1.9 — 2026-10-26
 
 **One defect class, three faces: the local engine now answers what `tools/list` promises, or

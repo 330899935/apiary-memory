@@ -3,13 +3,13 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "memory-hive-mcp"
-version = "0.1.9"
+name = "apiary-memory"
+version = "0.2.0"
 description = "Local-first memory your AI agents share over MCP. Ships a working SQLite memory store; agents propose, only you confirm."
 readme = "README.md"
 requires-python = ">=3.8"
 license = "MIT"
-authors = [{ name = "Memory Hive" }]
+authors = [{ name = "Apiary" }]
 keywords = ["mcp", "mcp-server", "model-context-protocol", "memory", "ai-memory", "local-first", "privacy", "ai-agents", "claude", "cursor"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -24,15 +24,22 @@ dependencies = []
 
 [project.urls]
 Homepage = "https://hello-fengchao.com"
-Repository = "https://github.com/330899935/memory-hive-mcp"
+Repository = "https://github.com/330899935/apiary-memory"
 "App (macOS)" = "https://apps.apple.com/app/id6806992983"
-Source = "https://github.com/330899935/memory-hive-mcp"
-Changelog = "https://github.com/330899935/memory-hive-mcp/blob/main/CHANGELOG.md"
+Source = "https://github.com/330899935/apiary-memory"
+Changelog = "https://github.com/330899935/apiary-memory/blob/main/CHANGELOG.md"
 
+# The distribution was renamed from memory-hive-mcp in 0.2.0. Both entry points
+# are installed and both resolve to the same function: an MCP host config that
+# already names `memory-hive-mcp` keeps working, and a new one can say
+# `apiary-memory`. Dropping the old names would break every config written
+# before the rename.
 [project.scripts]
-memory-hive-mcp = "hive_mcp.stdio:main"
+apiary-memory = "hive_mcp.stdio:main"
 # Confirming a proposal is a human action, so it gets its own command and is
 # deliberately absent from the MCP tool surface.
+apiary-memory-cli = "hive_mcp.cli:main"
+memory-hive-mcp = "hive_mcp.stdio:main"
 memory-hive-mcp-cli = "hive_mcp.cli:main"
 
 [tool.setuptools.packages.find]

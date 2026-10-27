@@ -139,7 +139,7 @@ class OfflineBehaviour(unittest.TestCase):
         )
         self.assertIn("result", resp, f"expected a result, got {resp}")
         result = resp["result"]
-        self.assertEqual(result["serverInfo"]["name"], "memory-hive-mcp")
+        self.assertEqual(result["serverInfo"]["name"], "apiary-memory")
         self.assertIn("tools", result["capabilities"])
 
     def test_offline_protocol_is_the_conservative_one(self):
