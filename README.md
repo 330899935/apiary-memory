@@ -3,8 +3,8 @@
 <!-- mcp-name: io.github.330899935/apiary-memory -->
 
 > **Also known as:** Apiary Memory · 记忆蜂巢 · Memory Hive · 蜂巢 ·
-> `io.github.330899935/apiary-memory` (MCP Registry name, from v0.2.0) ·
-> `hive-memory` (Registry name up to v0.1.9) · `memory-hive-mcp` (PyPI package until the rename ships).
+> `apiary-memory` on PyPI and `io.github.330899935/apiary-memory` on the MCP Registry (from v0.2.0) ·
+> old names `memory-hive-mcp` / `hive-memory` (v0.1.9 and earlier) still install and still work.
 > Not affiliated with [hive.com](https://hive.com) (team collaboration) or the `hive-mcp` Claude Code plugin.
 
 **Local-first personal memory for AI agents, over MCP.** Your agents can search what you have
@@ -15,10 +15,10 @@ It runs on its own. A working SQLite memory store ships inside this package — 
 cloud, no daemon, no dependencies.
 
 ```bash
-pip install memory-hive-mcp
+pip install apiary-memory
 ```
 
-**Desktop app, no terminal:** download [`memory-hive-mcp-0.1.9.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.1.9/memory-hive-mcp-0.1.9.mcpb) and double-click it.
+**Desktop app, no terminal:** download [`apiary-memory-0.2.0.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.0/apiary-memory-0.2.0.mcpb) and double-click it.
 
 Measured on 2026-10-27, on one MacBook with the Hive running locally — script and raw output in [`bench/`](bench/):
 
@@ -79,8 +79,8 @@ nothing else.
 ## Install
 
 ```bash
-pip install memory-hive-mcp      # the server: memory-hive-mcp
-                                 # the human's CLI: memory-hive-mcp-cli
+pip install apiary-memory        # the server: apiary-memory (was apiary-memory)
+                                 # the human's CLI: apiary-memory-cli (was apiary-memory-cli)
 ```
 
 Python 3.8 or newer. There is nothing else to install — the package uses only the standard
@@ -104,8 +104,8 @@ is optional.
 ```json
 {
   "mcpServers": {
-    "memory-hive": {
-      "command": "memory-hive-mcp",
+    "apiary-memory": {
+      "command": "apiary-memory",
       "env": { "HIVE_MODE": "local" }
     }
   }
@@ -198,16 +198,16 @@ Agents propose. You confirm. The confirmation lives in a terminal, in a command 
 type — deliberately not a tool an agent can call.
 
 ```bash
-memory-hive-mcp-cli list                  # what is waiting
-memory-hive-mcp-cli show <id>             # read one in full
-memory-hive-mcp-cli approve <id>          # confirm it, or --all
-memory-hive-mcp-cli reject <id>           # drop it for good
-memory-hive-mcp-cli search "deploy key"   # search confirmed memory
-memory-hive-mcp-cli forget <id>           # soft delete, reversible
-memory-hive-mcp-cli restore <id>          # undo forget
-memory-hive-mcp-cli stats                 # counts and the database path
-memory-hive-mcp-cli export --out dump.json
-memory-hive-mcp-cli path
+apiary-memory-cli list                 # what is waiting
+apiary-memory-cli show <id>            # read one in full
+apiary-memory-cli approve <id>         # confirm it, or --all
+apiary-memory-cli reject <id>          # drop it for good
+apiary-memory-cli search "deploy key"  # search confirmed memory
+apiary-memory-cli forget <id>          # soft delete, reversible
+apiary-memory-cli restore <id>         # undo forget
+apiary-memory-cli stats                # counts and the database path
+apiary-memory-cli export --out dump.json
+apiary-memory-cli path
 ```
 
 `--db <path>` on any command points at a different database. `HIVE_DB` does the same from the
@@ -272,7 +272,7 @@ Written down because a memory tool that oversells itself is worse than one that 
 ## Troubleshooting
 
 **"no confirmed memory matched this query" with entries pending.** Correct behaviour. Confirm
-them: `memory-hive-mcp-cli list`, then `approve`.
+them: `apiary-memory-cli list`, then `approve`.
 
 **A call fails with a message about `HIVE_AGENT_ID`.** The app answered and refused the
 credential. The call did **not** fall back to the local store, on purpose. Register an agent in
@@ -281,7 +281,7 @@ the app and set both variables, or set `HIVE_MODE=local` if you meant to use the
 **"Hive app not reachable ... and HIVE_MODE=remote forbids the local fallback".** You asked for
 the app only and it is not running. Start it, or drop `HIVE_MODE=remote`.
 
-**Where did my memory go?** `memory-hive-mcp-cli stats` prints the database path. If `HIVE_MODE`
+**Where did my memory go?** `apiary-memory-cli stats` prints the database path. If `HIVE_MODE`
 is `auto` and the app is running, the app has been answering — the local file is untouched by
 design.
 
