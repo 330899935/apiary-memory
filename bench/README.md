@@ -35,12 +35,14 @@ and it can rank that entry highly when the words match. It does **not** prove
 that a person can ask in their own words and find it.
 
 A natural-language figure is **not** part of this directory. One pilot ran
-separately on 2026-10-27 — 14 plainly-phrased questions, 2 of them landing in the
-top 5 — but it used a different harness on a different sample, and its
-per-question output was not kept, so it cannot be reproduced from here. We report
-it as a known weakness, not as a benchmark. A proper natural-language run will be
-measured the same way as above — script in this directory, raw output next to it
-— and will almost certainly come in lower than 97.5 %.
+separately on 2026-10-27: plain-spoken questions, 2 of which found the right entry
+in the top 5 (`bench_semantic.py`, kept outside this repo). Its per-query output
+was never saved — the top-5 lists were read and judged by hand — and the write-up
+records 14 questions while the script lists 15, so even the denominator is
+unsettled. Treat it as an order-of-magnitude signal about a real weakness, not as
+a benchmark. A proper natural-language run will be measured the same way as above
+— script in this directory, raw output next to it — and will almost certainly
+come in lower than 97.5 %.
 
 Same goes for latency: these are numbers from one machine, a MacBook, with the
 service running locally. A network hop to a remote host would change them.
