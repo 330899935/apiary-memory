@@ -79,8 +79,8 @@ nothing else.
 ## Install
 
 ```bash
-pip install apiary-memory        # the server: apiary-memory (was apiary-memory)
-                                 # the human's CLI: apiary-memory-cli (was apiary-memory-cli)
+pip install apiary-memory        # the server: apiary-memory (was memory-hive-mcp)
+                                 # the human's CLI: apiary-memory-cli (was memory-hive-mcp-cli)
 ```
 
 Python 3.8 or newer. There is nothing else to install — the package uses only the standard
