@@ -34,11 +34,16 @@ query. That proves two things and only two things: the index contains the entry,
 and it can rank that entry highly when the words match. It does **not** prove
 that a person can ask in their own words and find it.
 
-We have not yet published a natural-language recall figure. When we do, it will
-be measured the same way — script in this directory, raw output next to it —
-and it will almost certainly be lower than 97.5 %. Same goes for latency: these
-are numbers from one machine, a MacBook, with the service running locally. A
-network hop to a remote host would change them.
+A natural-language figure is **not** part of this directory. One pilot ran
+separately on 2026-10-27 — 14 plainly-phrased questions, 2 of them landing in the
+top 5 — but it used a different harness on a different sample, and its
+per-question output was not kept, so it cannot be reproduced from here. We report
+it as a known weakness, not as a benchmark. A proper natural-language run will be
+measured the same way as above — script in this directory, raw output next to it
+— and will almost certainly come in lower than 97.5 %.
+
+Same goes for latency: these are numbers from one machine, a MacBook, with the
+service running locally. A network hop to a remote host would change them.
 
 Corpus size counts the four **plaintext** warehouses. The encrypted warehouse is
 excluded because it is not readable without your keys; it is reported by byte
