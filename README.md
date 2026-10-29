@@ -2,6 +2,8 @@
 
 <!-- mcp-name: io.github.330899935/apiary-memory -->
 
+[![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/330899935/apiary-memory)
+
 > **Also known as:** Apiary Memory · 记忆蜂巢 · Memory Hive · 蜂巢 ·
 > `apiary-memory` on PyPI and `io.github.330899935/apiary-memory` on the MCP Registry (from v0.2.0) ·
 > old names `memory-hive-mcp` / `hive-memory` (v0.1.9 and earlier) still install and still work.
