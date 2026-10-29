@@ -76,6 +76,28 @@ while your client believed it had reached the app. Silent data forking is worse 
 message, so a reply from the app is final. The fallback fires on a connection failure, and on
 nothing else.
 
+## Measured on the app
+
+The numbers below come from the macOS app's local HTTP service on one MacBook — **not** from
+this package's SQLite store, which is a different engine over a different dataset. Mixing the
+two would be the usual benchmark trick, so they are kept apart.
+
+| | |
+| --- | --- |
+| Store size (four plaintext vaults) | **1,356 entries**, 2.52M chars, 47 distinct days |
+| Retrieval hit rate | Top-5 **92.5%**, Top-20 **95.0%** (n=40) |
+| Latency (local HTTP, incl. round trip) | p50 **90 ms**, p95 **127 ms** |
+
+Measured 2026-10-29 against the live service. The hit-rate queries were each entry's own
+title — the easy case. It shows the index is complete; it does not show that free-form
+questions land. A separate pilot using plainly-phrased questions found the right entry in the
+top 5 only twice out of roughly a dozen, which is the biggest known weakness of this version.
+
+The four encrypted vaults are excluded from the count because they are unreadable by design.
+A load test at 1,000,000 synthetic entries gave 0.6 s warm search, 5.3 GB RSS and a 1.0 GB
+index — see [`bench/`](https://github.com/330899935/apiary-memory/tree/main/bench) for the
+script and raw output.
+
 ## Install
 
 ```bash
