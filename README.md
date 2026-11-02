@@ -20,7 +20,7 @@ cloud, no daemon, no dependencies.
 pip install apiary-memory
 ```
 
-**Desktop app, no terminal:** download [`apiary-memory-0.2.0.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.0/apiary-memory-0.2.0.mcpb) and double-click it.
+**Desktop app, no terminal:** download [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb) and double-click it.
 
 Measured on 2026-10-27, on one MacBook with the Hive running locally — script and raw output in [`bench/`](bench/):
 

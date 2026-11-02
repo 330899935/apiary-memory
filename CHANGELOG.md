@@ -31,8 +31,8 @@ reach the Hive found "over MCP" and stopped there.
   app, not of this package. Declaring `http` here would make clients dial an endpoint this
   package does not serve. This is now stated in the README so nobody "fixes" it later.
 
-The `.mcpb` bundle attached to the [v0.2.0 release](https://github.com/330899935/apiary-memory/releases/tag/v0.2.0)
-is still the one to use for a no-terminal install — it is functionally identical to 0.2.1.
+A `.mcpb` bundle is attached to this release for a no-terminal install. It carries the same
+code as 0.2.0; only the manifest version and the bundled README changed.
 
 ---
 
