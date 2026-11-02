@@ -6,7 +6,8 @@
 
 > **Also known as:** Apiary Memory · 记忆蜂巢 · Memory Hive · 蜂巢 ·
 > `apiary-memory` on PyPI and `io.github.330899935/apiary-memory` on the MCP Registry (from v0.2.0) ·
-> old names `memory-hive-mcp` / `hive-memory` (v0.1.9 and earlier) still install and still work.
+> old name `memory-hive-mcp` still installs, but caps at **0.1.9** — install `apiary-memory` to get
+> the current release. `hive-memory` no longer exists on PyPI (404) and should not be cited.
 > Not affiliated with [hive.com](https://hive.com) (team collaboration) or the `hive-mcp` Claude Code plugin.
 
 **Local-first personal memory for AI agents, over MCP.** Your agents can search what you have
