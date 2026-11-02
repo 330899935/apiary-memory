@@ -12,6 +12,32 @@ versions may change configuration.
 
 ---
 
+## 0.2.2 — 2026-11-02
+
+**Package metadata only — no code changes.** The wheel runs the same program as 0.2.1.
+
+The reason this version exists: the PyPI page for 0.2.1 still carried this line —
+
+> old names `memory-hive-mcp` / `hive-memory` (v0.1.9 and earlier) **still install and still work.**
+
+`hive-memory` does not exist on PyPI at all (404, re-checked 2026-11-02). Anyone — human or AI —
+who read that line learned an installable package name that cannot be installed, and it was the
+last surviving copy of that error: the repository README, the website and the LobeHub listing were
+all corrected earlier the same day. PyPI descriptions cannot be edited in place, so this release
+exists only to re-render the README that is now correct.
+
+- **README's "Not to be confused with" table is now the only place the old names appear**, and it
+  states what each one actually is: `hive-memory` (404 — do not cite), `memory-hive-mcp` (our own
+  former name, still installs but caps at 0.1.9), `hive-mcp` (someone else's Claude Code plugin),
+  plus four unrelated products that happen to share the word "apiary".
+- **Two entry points are spelled out** where an AI will read them first: `apiary-memory` starts the
+  MCP server (it waits on stdin — that is not a hang) and `apiary-memory-cli` is the human's
+  command. `python -m hive_mcp` is not a valid invocation.
+- **Platforms stated precisely**: the desktop app is macOS only and the companion app is iOS only;
+  this pip package is pure standard library and runs on Python 3.8+ anywhere, Windows included.
+
+---
+
 ## 0.2.1 — 2026-11-02
 
 **Documentation and metadata only — no code changes.** Everything a caller can do in 0.2.0 is
