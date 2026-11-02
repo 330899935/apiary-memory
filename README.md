@@ -142,6 +142,58 @@ is optional.
 with the headers `X-Hive-Agent` and `X-Hive-Token`. This package is the stdio path; the HTTP
 endpoint belongs to the app.
 
+## Two ways to connect
+
+There are two doors onto the same memory. Which one you use depends on **where your AI runs**,
+not on what it can do.
+
+| | Local (MCP) | Web (HTTP) |
+| --- | --- | --- |
+| Built for | AIs installed on your Mac | AIs running on someone else's servers |
+| How you connect | a stdio command in a config file | paste one address |
+| Network | none — never leaves the machine | public, relayed by Cloudflare |
+| Available since | this package, 0.1.0 | Desktop app **1.4.8** |
+
+Behind both doors is the same home: what a local AI stores today, a web AI can read tomorrow —
+and the other way round. **Swap in a hundred AIs; there is still one memory, and it is on your
+disk.**
+
+### The web (HTTP) door
+
+An AI running on the web cannot reach your Mac. So the Desktop app opens a channel outwards.
+In the app, open **AI Connect · Web (HTTP)**, pick one of three levels, and copy the address:
+
+| Level | Public? | Address stable? | Use when |
+| --- | --- | --- | --- |
+| **Local web** | no | — | the AI runs on the same machine |
+| **Quick tunnel** | yes | no | you want a web AI in without owning a domain |
+| **Fixed address** | yes | yes | long-term use; needs your own Cloudflare account |
+
+**If local works, do not open a tunnel.** That is what the app tells you, and it is our advice
+here too: if local is enough, do not open the door onto the street.
+
+Three things to know before you connect:
+
+1. **Once connected, the AI can read your memory.** It gets what it asks for, within what it is
+   allowed to see.
+2. **Over the public internet your data is relayed by Cloudflare — it is not end-to-end
+   encrypted to the app.** What is stored and what is computed stay on your Mac, but the traffic
+   passes through Cloudflare.
+3. **The four privacy vaults and the cognition layer are never opened to outside AIs — that is
+   a wall, not a switch.** No matter which level you open, they are not part of it.
+
+**Which AIs?** Any client that supports remote MCP works — read-only, public vaults only. One
+caveat: ChatGPT uses Custom GPT Actions (OpenAPI), a different mechanism from MCP. An address
+alone will not work there, and that step is not built yet.
+
+### Why `transport` still says `stdio`
+
+The package and the MCP Registry entry both declare `"transport": {"type": "stdio"}`. That is
+accurate and stays that way: **this package _is_ the stdio bridge.** The web (HTTP) door is a
+capability of the Desktop app, not of this package. Declaring `http` here would make clients
+dial an endpoint the package does not serve, and the connection would simply fail — so the door
+is documented above rather than declared as a package transport.
+
 ## Prerequisite
 
 **None, for the local store** — install the package and it works. A running app is a prerequisite

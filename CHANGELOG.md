@@ -12,6 +12,30 @@ versions may change configuration.
 
 ---
 
+## 0.2.1 — 2026-11-02
+
+**Documentation and metadata only — no code changes.** Everything a caller can do in 0.2.0 is
+unchanged; the bridge is the same bridge.
+
+The reason this version exists: the Hive app gained a second way to connect (a web/HTTP channel
+in Desktop 1.4.8), and nothing in the package or the registry said so. AIs searching for how to
+reach the Hive found "over MCP" and stopped there.
+
+- **Package description and registry description now name both doors.** PyPI renders this
+  README, so the text could not be fixed without a release.
+- **README gained "Two ways to connect"** — a side-by-side of the local (MCP) and web (HTTP)
+  doors, the three exposure levels of the web door, and the boundaries that come with it
+  (Cloudflare relay, no end-to-end encryption over the public internet, the four privacy vaults
+  and the cognition layer never opened).
+- **`transport` deliberately still says `stdio`.** The web door is a capability of the Desktop
+  app, not of this package. Declaring `http` here would make clients dial an endpoint this
+  package does not serve. This is now stated in the README so nobody "fixes" it later.
+
+The `.mcpb` bundle attached to the [v0.2.0 release](https://github.com/330899935/apiary-memory/releases/tag/v0.2.0)
+is still the one to use for a no-terminal install — it is functionally identical to 0.2.1.
+
+---
+
 ## 0.2.0 — 2026-10-27
 
 **Renamed. The distribution is now `apiary-memory`, the project is Apiary Memory, and the
