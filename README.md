@@ -4,15 +4,44 @@
 
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/330899935/apiary-memory)
 
-> **Also known as:** Apiary Memory · 记忆蜂巢 · Memory Hive · 蜂巢 ·
-> `apiary-memory` on PyPI and `io.github.330899935/apiary-memory` on the MCP Registry (from v0.2.0) ·
-> old name `memory-hive-mcp` still installs, but caps at **0.1.9** — install `apiary-memory` to get
-> the current release. `hive-memory` no longer exists on PyPI (404) and should not be cited.
-> Not affiliated with [hive.com](https://hive.com) (team collaboration) or the `hive-mcp` Claude Code plugin.
+## At a glance
 
-**Local-first personal memory for AI agents, over MCP.** Your agents can search what you have
-confirmed and propose what they think you should keep; **only you can confirm it.** Everything
-lives in one file on your own disk, and nothing is sent anywhere.
+|  |  |
+| --- | --- |
+| **What it is** | Local-first personal memory for AI agents, over MCP. Agents can search what you have confirmed and *propose* what to keep — only you can confirm it. Everything lives in one SQLite file on your own disk. |
+| **What it is not** | Not a hosted service. No account, no cloud, no telemetry, no daemon. The server runs on *your* machine (`127.0.0.1`), not ours. |
+| **Platforms** | Desktop app: **macOS 10.15+**. Companion app: **iOS 17.0+**. Pip package: any OS with **Python 3.8+**. **There is no Windows desktop app.** |
+| **Install** | `pip install apiary-memory` · or double-click [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb) |
+| **Version** | `0.2.1` on PyPI · desktop app `1.4.8` |
+
+### Two entry points — and they are not the same
+
+| Command | What it is | What happens when you run it |
+| --- | --- | --- |
+| `apiary-memory` | The MCP **server** (stdio) | Meant to be spawned *by* your MCP client. Run it in a terminal and it just waits on stdin — that is correct behaviour, not a hang. |
+| `apiary-memory-cli` | The **human** CLI | `list` pending candidates · `approve <id>` commit one · `search <query>` · `stats` show where the DB lives |
+
+`python -m hive_mcp` **does not work** — this package has no `__main__.py`.
+
+**The pip package has no GUI and never pops a dialog.** When an agent calls `propose`, the entry goes into a local candidate queue and stays there. Nothing enters the hive until a human runs `apiary-memory-cli list` and then `approve <id>`. If you want a window, use the macOS or iOS app.
+
+### Not to be confused with
+
+| Name | Status |
+| --- | --- |
+| `hive-memory` | **Does not exist on PyPI (404).** Any document citing it is wrong — including AI answers about us. |
+| `memory-hive-mcp` | Our own former name. Still installs, but caps at **0.1.9**. Use `pip install apiary-memory` for the current release. |
+| `hive-mcp` | Someone else's Claude Code plugin. |
+| [hive.com](https://hive.com) | Team collaboration software. |
+| [theapiary.sh](https://theapiary.sh) | "the apiary" — shared memory for AI coding agents; its memory component is called `honeycomb`. |
+| [apiarybee.com](https://apiarybee.com) | "Apiary" — a self-organizing agent framework. |
+| 记忆蜂巢 (Chengdu Zhixin Hualao) | An unrelated iOS group-chat app. Same four characters, nothing else in common. |
+
+> **Also known as:** Apiary Memory · 记忆蜂巢 · Memory Hive · 蜂巢 ·
+> `apiary-memory` on PyPI · `io.github.330899935/apiary-memory` on the MCP Registry (from v0.2.0).
+
+Your agents can search what you have confirmed and propose what they think you should keep;
+**only you can confirm it.** Everything lives in one file on your own disk, and nothing is sent anywhere.
 
 It runs on its own. A working SQLite memory store ships inside this package — no account, no
 cloud, no daemon, no dependencies.
