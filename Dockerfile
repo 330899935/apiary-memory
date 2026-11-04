@@ -37,6 +37,13 @@ WORKDIR /app
 # Package source only - no tests, no .git, no build artefacts.
 COPY src ./src
 
+# The manifest is not needed to run the package, but stdio.py's
+# `_resolve_version` reads [project].version out of it: with no pyproject.toml
+# and no installed distribution to ask, the server falls back to a hardcoded
+# version string and reports a release behind what is actually running. One
+# small file keeps the version honest inside the container.
+COPY pyproject.toml ./pyproject.toml
+
 # Non-root, and the one directory it may write to. The store creates the
 # database on first use, so the directory must exist and be owned by this user.
 RUN useradd --create-home --uid 10001 hive \
