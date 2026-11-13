@@ -85,7 +85,7 @@ cloud, no daemon, no dependencies.
 pip install apiary-memory
 ```
 
-**No terminal, inside Claude Desktop:** double-click [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb). That bundle was built at 0.2.1 and contains the same code as 0.2.3 — only package metadata differs, so nothing behaves differently. For the newest metadata, use `pip install apiary-memory`.
+**No terminal, inside Claude Desktop:** double-click [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb). Its manifest is frozen at 0.2.1 and the bundle has not been rebuilt since — it runs the 0.2.1 code. For anything newer, use `pip install apiary-memory`.
 
 **Not the app.** A `.mcpb` file is a Claude Desktop extension bundle, not the macOS app. The app is a separate download from the Mac App Store.
 
@@ -126,9 +126,10 @@ rather than discovered later — see [Honest limits](#honest-limits).
 ## What the app adds
 
 [Apiary Memory for macOS](https://apps.apple.com/app/id6806992983) is the same design with the
-expensive parts built: eight vaults with four of them locked behind a PIN (Argon2id-wrapped key,
-AES-256 at rest), a daily evolution log, multi-agent identity management, and a UI for reading
-and confirming. It also answers MCP itself, with richer ranking.
+expensive parts built: eight vaults with four of them locked behind a PIN — the app's UI calls the
+same credential the *privacy password* (隐私区密码); one thing, two names — wrapping an
+Argon2id-derived key with AES-256 at rest, a daily evolution log, multi-agent identity management,
+and a UI for reading and confirming. It also answers MCP itself, with richer ranking.
 
 If the app is running, this package uses it and leaves the local file alone. If it is not, the
 local store answers. You do not have to choose up front:
