@@ -4,6 +4,12 @@
 
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/330899935/apiary-memory)
 
+## The problem it solves
+
+You explain your project to one AI today. Next week you explain it again to a different one, from scratch — because each tool keeps its own memory, and none of that memory is yours to move.
+
+This is a memory box that sits on your own disk. Any MCP-capable AI can read it. An agent can *propose* what to remember, but nothing is written until you approve it. Switch to another AI next month and the memory stays where it was — it was never the AI's to begin with.
+
 ## At a glance
 
 |  |  |
