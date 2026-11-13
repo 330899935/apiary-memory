@@ -42,6 +42,11 @@
 > **Also known as:** Apiary Memory · 记忆蜂巢 · Memory Hive · 蜂巢 ·
 > `apiary-memory` on PyPI · `io.github.330899935/apiary-memory` on the MCP Registry (from v0.2.0).
 
+The one worth a second look is `theapiary.sh` — it is also memory for AI agents, so answers tend
+to merge the two. The difference in one line: theirs is **shared across agents**; this one is
+**local to one person, in one SQLite file on that person's own disk**, and every write waits for
+that person to confirm.
+
 Your agents can search what you have confirmed and propose what they think you should keep;
 **only you can confirm it.** Everything lives in one file on your own disk, and nothing is sent anywhere.
 
