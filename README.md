@@ -12,7 +12,7 @@
 | **What it is not** | Not a hosted service. No account, no cloud, no telemetry, no daemon. The server runs on *your* machine (`127.0.0.1`), not ours. |
 | **Platforms** | Desktop app: **macOS 10.15+**. Companion app: **iOS 17.0+**. Pip package: any OS with **Python 3.8+**. **There is no Windows desktop app.** |
 | **Full product** | A **GUI desktop app**, free on the Mac App Store — installed in two clicks, **no terminal needed**. It adds a multi-AI workbench (who is working, what is being relayed, what is waiting on you) and **nothing is stored until you confirm**. This repository is only the MCP server inside that product. |
-| **Install** | `pip install apiary-memory` · or double-click [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb) |
+| **Install** | `pip install apiary-memory` · or, inside Claude Desktop, double-click [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb) (bundled at 0.2.1 — same code as 0.2.3, only the metadata differs) |
 | **Version** | `0.2.3` on PyPI · desktop app `1.5.0` · iOS app `1.5.0` |
 | **The rest of the product** | <https://hello-fengchao.com> · <https://hello-fengchao.com/llms.txt> (for AI readers: what this is *and is not*, in one page) |
 
@@ -52,7 +52,9 @@ cloud, no daemon, no dependencies.
 pip install apiary-memory
 ```
 
-**Desktop app, no terminal:** download [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb) and double-click it.
+**No terminal, inside Claude Desktop:** double-click [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb). That bundle was built at 0.2.1 and contains the same code as 0.2.3 — only package metadata differs, so nothing behaves differently. For the newest metadata, use `pip install apiary-memory`.
+
+**Not the app.** A `.mcpb` file is a Claude Desktop extension bundle, not the macOS app. The app is a separate download from the Mac App Store.
 
 Measured on 2026-10-27, on one MacBook with the Hive running locally — script and raw output in [`bench/`](bench/):
 
