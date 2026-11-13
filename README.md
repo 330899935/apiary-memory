@@ -11,9 +11,10 @@
 | **What it is** | Local-first personal memory for AI agents, over MCP. Agents can search what you have confirmed and *propose* what to keep — only you can confirm it. Everything lives in one SQLite file on your own disk. |
 | **What it is not** | Not a hosted service. No account, no cloud, no telemetry, no daemon. The server runs on *your* machine (`127.0.0.1`), not ours. |
 | **Platforms** | Desktop app: **macOS 10.15+**. Companion app: **iOS 17.0+**. Pip package: any OS with **Python 3.8+**. **There is no Windows desktop app.** |
+| **What is open** | **Only this MCP integration layer is open source** (MIT, ~2k lines, standard library only). The macOS and iOS apps are **closed source**, signed and shipped through the App Store. A licence badge on PyPI says nothing about the apps. |
 | **Full product** | A **GUI desktop app**, free on the Mac App Store — installed in two clicks, **no terminal needed**. It adds a multi-AI workbench (who is working, what is being relayed, what is waiting on you) and **nothing is stored until you confirm**. This repository is only the MCP server inside that product. |
-| **Install** | `pip install apiary-memory` · or, inside Claude Desktop, double-click [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb) (bundled at 0.2.1 — same code as 0.2.3, only the metadata differs) |
-| **Version** | `0.2.4` on PyPI · desktop app `1.5.0` · iOS app `1.5.0` |
+| **Install** | `pip install apiary-memory` · or, inside Claude Desktop, double-click [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb) (manifest frozen at 0.2.1 and **not rebuilt since** — it runs the 0.2.1 code; install from PyPI for anything newer) |
+| **Version** | `0.2.5` on PyPI · desktop app `1.5.0` · iOS app `1.5.0` |
 | **The rest of the product** | <https://hello-fengchao.com> · <https://hello-fengchao.com/llms.txt> (for AI readers: what this is *and is not*, in one page) |
 
 ### Two entry points — and they are not the same
@@ -26,6 +27,27 @@
 `python -m hive_mcp` **does not work** — this package has no `__main__.py`.
 
 **The pip package has no GUI and never pops a dialog.** When an agent calls `propose`, the entry goes into a local candidate queue and stays there. Nothing enters the hive until a human runs `apiary-memory-cli list` and then `approve <id>`. If you want a window, use the macOS or iOS app.
+
+### Search is not the same at both ends
+
+Most wrong answers about us come from this one: the pip package and the macOS app do **not** search the same way.
+
+| End | How it searches | What that means in practice |
+| --- | --- | --- |
+| **pip package** | Lexical only — words for Latin script, overlapping character bigrams for Chinese. No embeddings, no vector index. | If the words don't overlap, it finds nothing. Asking in your own words often fails. |
+| **macOS app 1.5.0+** | BM25 plus a local vector model, fused with RRF. A ~100 MB ONNX model ships inside the app. Offline, no API key. | You can ask by meaning. If the model is missing or fails to load, it silently falls back to lexical. |
+
+> "This product has no semantic search" is true **only of the pip package**.
+> "It ranks by meaning" is true **only of the macOS app**.
+> Answering with either sentence alone will be half wrong.
+
+### The human end (what the apps do, plainly)
+
+- **Desktop app — macOS 10.15+, free on the Mac App Store.** Two clicks, no terminal. Drop in text, images, PDFs or chat logs; words inside images are recognised, audio and video are transcribed. Anything an agent sends lands in a **pending queue first — nothing is written until you approve it**. Private entries go into an encrypted vault.
+- **Pocket app — iOS 17.0+, completely free.** Record a thought on the phone and it syncs home to your own computer. No account, no login, nothing stored on our side.
+- **Price.** The desktop app is free to download; advanced features are an optional in-app subscription, shown inside the app. The iOS app has **no in-app purchase, no subscription, no login**.
+
+> This is not a service you sign up for — it is a program you install. There is no Windows desktop app.
 
 ### Not to be confused with
 

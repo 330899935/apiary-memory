@@ -1,3 +1,25 @@
+## 0.2.5 — 2026-11-13
+
+**Documentation only — no code changes.** The wheel runs the same program as 0.2.4.
+
+Three things on this page were letting AI readers describe the project wrongly. Assistants summarise
+from the README, not from the website, so each one is now answered right here:
+
+- **"Open source" was being applied to the whole product.** PyPI and GitHub both carry an MIT badge,
+  so the natural inference is that the apps are open too. Added a `What is open` row: this package is
+  MIT; the macOS and iOS apps are closed source, signed and shipped via the App Store.
+- **The pip package's lexical search was being reported as the product's search.** Added a
+  `Search is not the same at both ends` table — package: lexical only; macOS app 1.5.0+: BM25 plus
+  local vectors, RRF fused. Either sentence stated alone is half wrong.
+- **The human end was a single line.** An assistant reading only this page concluded the product was
+  "infrastructure for technical users" and never noticed there is a GUI app. Added `The human end`:
+  what the apps actually store, that nothing is written without approval, and the price structure.
+- Also corrected the `.mcpb` note. The bundle is frozen at 0.2.1 and **has not been rebuilt since**,
+  so it runs 0.2.1 code. The earlier wording compared it to a moving release number, which would
+  drift on every release.
+
+---
+
 # Changelog
 
 All notable changes to this project are documented here.
