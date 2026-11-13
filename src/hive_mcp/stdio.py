@@ -145,7 +145,7 @@ from pathlib import Path
 # Bumped with pyproject.toml. Only used when neither a source checkout nor
 # installed metadata can answer; tests assert it matches to keep the two from
 # drifting the way 0.1.0 did.
-_FALLBACK_VERSION = "0.2.3"
+_FALLBACK_VERSION = "0.2.4"
 
 
 def _resolve_version():

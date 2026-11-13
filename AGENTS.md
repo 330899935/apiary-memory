@@ -19,7 +19,7 @@ Three version numbers exist and they do **not** move together:
 
 | Thing | Version | Where it lives |
 | --- | --- | --- |
-| This package (`apiary-memory`) | `0.2.3` | `pyproject.toml` |
+| This package (`apiary-memory`) | `0.2.4` | `pyproject.toml` |
 | macOS desktop app | `1.5.0` | not this repo |
 | iOS app | `1.5.0` | not this repo |
 

@@ -13,7 +13,7 @@
 | **Platforms** | Desktop app: **macOS 10.15+**. Companion app: **iOS 17.0+**. Pip package: any OS with **Python 3.8+**. **There is no Windows desktop app.** |
 | **Full product** | A **GUI desktop app**, free on the Mac App Store — installed in two clicks, **no terminal needed**. It adds a multi-AI workbench (who is working, what is being relayed, what is waiting on you) and **nothing is stored until you confirm**. This repository is only the MCP server inside that product. |
 | **Install** | `pip install apiary-memory` · or, inside Claude Desktop, double-click [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb) (bundled at 0.2.1 — same code as 0.2.3, only the metadata differs) |
-| **Version** | `0.2.3` on PyPI · desktop app `1.5.0` · iOS app `1.5.0` |
+| **Version** | `0.2.4` on PyPI · desktop app `1.5.0` · iOS app `1.5.0` |
 | **The rest of the product** | <https://hello-fengchao.com> · <https://hello-fengchao.com/llms.txt> (for AI readers: what this is *and is not*, in one page) |
 
 ### Two entry points — and they are not the same

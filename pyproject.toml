@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "apiary-memory"
-version = "0.2.3"
+version = "0.2.4"
 description = "Local-first memory your AI agents share — over MCP, on your machine. Agents propose; only you confirm."
 readme = "README.md"
 requires-python = ">=3.8"

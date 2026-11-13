@@ -6,11 +6,19 @@ versions may change configuration.
 
 ---
 
----
 
----
+## 0.2.4 — 2026-11-13
 
----
+**Documentation only — no code changes.** The wheel runs the same program as 0.2.3.
+
+Two sentences on the PyPI page could make an AI describe this package wrongly. Both are fixed:
+
+- The README called the `.mcpb` bundle *"Desktop app, no terminal"*. It is not the desktop app.
+  A `.mcpb` is a Claude Desktop extension bundle; the macOS app is a separate download from the
+  Mac App Store. Corrected, and a short *"Not the app"* note added.
+- The install row did not say which version the bundle was built from. It was built at 0.2.1;
+  it carries the same code as 0.2.3 — only package metadata differs. Now stated in place, so
+  nobody has to guess whether the bundle is stale.
 
 ---
 
