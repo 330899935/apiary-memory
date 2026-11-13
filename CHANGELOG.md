@@ -12,6 +12,36 @@ versions may change configuration.
 
 ---
 
+---
+
+## 0.2.3 — 2026-11-13
+
+**Package metadata only — no code changes.** The wheel runs the same program as 0.2.2.
+
+This version exists for one reason: the 0.2.2 `summary` still claimed a capability this package
+does not have.
+
+> Local-first memory your AI agents share — over MCP on your machine, **or over HTTP from AIs on
+> the web**.
+
+That HTTP door is opened by the **macOS app**, not by this package. The package is the stdio
+path only: it has no listener, no port and no tunnel. Anyone — human or AI — reading the old line
+would expect `pip install apiary-memory` to serve a web AI, and it cannot. The summary now says:
+
+> Local-first memory your AI agents share — over MCP, on your machine. Agents propose; only you
+> confirm.
+
+Also in this release:
+
+- `README.md` — "At a glance" gains a **Full product** row and points at the website and
+  `llms.txt`, so a reader (or an AI) learns there is a GUI desktop app before concluding this is
+  a command-line-only tool. Version row corrected (`0.2.3` / desktop `1.5.0` / iOS `1.5.0`).
+- `AGENTS.md` — new: the rules this repository is maintained under, for coding agents.
+- `server.json` — registry description no longer advertises the HTTP door.
+- `pyproject.toml` — keywords expanded, `Intended Audience :: End Users/Desktop` added.
+
+---
+
 ## 0.2.2 — 2026-11-02
 
 **Package metadata only — no code changes.** The wheel runs the same program as 0.2.1.

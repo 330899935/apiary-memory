@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.330899935/apiary-memory",
   "title": "Apiary Memory",
-  "description": "Local-first memory for AI agents. MCP locally, HTTP from the web. Agents propose; you confirm.",
-  "version": "0.2.2",
+  "description": "Local-first memory for AI agents, over MCP on your own machine. Agents propose; only you confirm. There is also a macOS GUI app — this server is what it wraps.",
+  "version": "0.2.3",
   "websiteUrl": "https://hello-fengchao.com",
   "repository": {
     "url": "https://github.com/330899935/apiary-memory",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "apiary-memory",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "transport": {
         "type": "stdio"
       },

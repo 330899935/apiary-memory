@@ -11,8 +11,10 @@
 | **What it is** | Local-first personal memory for AI agents, over MCP. Agents can search what you have confirmed and *propose* what to keep — only you can confirm it. Everything lives in one SQLite file on your own disk. |
 | **What it is not** | Not a hosted service. No account, no cloud, no telemetry, no daemon. The server runs on *your* machine (`127.0.0.1`), not ours. |
 | **Platforms** | Desktop app: **macOS 10.15+**. Companion app: **iOS 17.0+**. Pip package: any OS with **Python 3.8+**. **There is no Windows desktop app.** |
+| **Full product** | A **GUI desktop app**, free on the Mac App Store — installed in two clicks, **no terminal needed**. It adds a multi-AI workbench (who is working, what is being relayed, what is waiting on you) and **nothing is stored until you confirm**. This repository is only the MCP server inside that product. |
 | **Install** | `pip install apiary-memory` · or double-click [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb) |
-| **Version** | `0.2.1` on PyPI · desktop app `1.4.8` |
+| **Version** | `0.2.3` on PyPI · desktop app `1.5.0` · iOS app `1.5.0` |
+| **The rest of the product** | <https://hello-fengchao.com> · <https://hello-fengchao.com/llms.txt> (for AI readers: what this is *and is not*, in one page) |
 
 ### Two entry points — and they are not the same
 
@@ -182,7 +184,7 @@ not on what it can do.
 | Built for | AIs installed on your Mac | AIs running on someone else's servers |
 | How you connect | a stdio command in a config file | paste one address |
 | Network | none — never leaves the machine | public, relayed by Cloudflare |
-| Available since | this package, 0.1.0 | Desktop app **1.4.8** |
+| Available since | this package, 0.1.0 | Desktop app **1.5.0** |
 
 Behind both doors is the same home: what a local AI stores today, a web AI can read tomorrow —
 and the other way round. **Swap in a hundred AIs; there is still one memory, and it is on your

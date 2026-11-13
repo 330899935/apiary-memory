@@ -145,7 +145,7 @@ from pathlib import Path
 # Bumped with pyproject.toml. Only used when neither a source checkout nor
 # installed metadata can answer; tests assert it matches to keep the two from
 # drifting the way 0.1.0 did.
-_FALLBACK_VERSION = "0.2.1"
+_FALLBACK_VERSION = "0.2.3"
 
 
 def _resolve_version():
@@ -683,7 +683,8 @@ def _local_initialize(msg_id):
             "serverInfo": {"name": SERVER_NAME, "version": __version__},
             "instructions": (
                 "Local-first personal memory. Agents may propose entries; only "
-                "the human confirms them (memory-hive-mcp-cli approve), so "
+                "the human confirms them (apiary-memory-cli approve, formerly "
+                "memory-hive-mcp-cli), so "
                 "recall searches confirmed memory only, and the tool list "
                 "advertises only inputs and wording the engine serving this "
                 "session can honour. This server keeps its "
