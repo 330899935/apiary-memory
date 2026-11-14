@@ -1,3 +1,26 @@
+## 0.2.6 — 2026-11-14
+
+**Two lines of behaviour, no new tool parameters.** Same tool surface as 0.2.5, so nothing that
+integrates today breaks.
+
+Both come from one interview question: when the human asked an assistant to look something up, they
+had to say *"go into the hive and check"* — every single session. The instruction now carries that
+step itself:
+
+- **Read before answering.** On a new session, call `get_context` before answering anything about
+  earlier work or past decisions, instead of waiting to be told to look.
+- **Say where an entry came from.** Tag every proposal with one of `src:user_stated`,
+  `src:agent_summary`, `src:test`, `src:external`, and never quote a `test` or `external` entry back
+  as a fact. Tagging rides on `tags`, which both engines already store — a dedicated
+  `propose.source_kind` parameter was written and then withdrawn, because the package may not
+  advertise an input the engine serving the session cannot honour.
+
+Scope, stated plainly: this text is the bridge's own `initialize`. When the Hive app is reachable it
+answers `initialize` itself, so the app's instructions still need the same two lines — that is a
+desktop change, not this one.
+
+---
+
 ## 0.2.5 — 2026-11-13
 
 **Documentation only — no code changes.** The wheel runs the same program as 0.2.4.

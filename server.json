@@ -3,7 +3,7 @@
   "name": "io.github.330899935/apiary-memory",
   "title": "Apiary Memory",
   "description": "Local-first memory for AI agents, over MCP on your machine. Agents propose; only you confirm.",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "websiteUrl": "https://hello-fengchao.com",
   "repository": {
     "url": "https://github.com/330899935/apiary-memory",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "apiary-memory",
-      "version": "0.2.5",
+      "version": "0.2.6",
       "transport": {
         "type": "stdio"
       },

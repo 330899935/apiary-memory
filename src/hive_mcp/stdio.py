@@ -145,7 +145,7 @@ from pathlib import Path
 # Bumped with pyproject.toml. Only used when neither a source checkout nor
 # installed metadata can answer; tests assert it matches to keep the two from
 # drifting the way 0.1.0 did.
-_FALLBACK_VERSION = "0.2.5"
+_FALLBACK_VERSION = "0.2.6"
 
 
 def _resolve_version():
@@ -691,7 +691,15 @@ def _local_initialize(msg_id):
                 "data in a SQLite file on this machine and sends nothing "
                 "offline; if the Hive app is running, this bridge uses it "
                 "instead and leaves the local file untouched. Responses state "
-                "which engine answered in their `mode` field."
+                "which engine answered in their `mode` field. On a new session, "
+                "call get_context before answering anything about earlier work "
+                "or past decisions - do not wait to be told to look. When you "
+                "propose, add one provenance tag so a later reader knows how "
+                "much to trust the entry: src:user_stated (the human said it), "
+                "src:agent_summary (you concluded it), src:test (a fixture or a "
+                "write test), src:external (fetched from a page, file or another "
+                "tool). Never quote a test or external entry back to the human "
+                "as a fact."
             ),
         },
     )
