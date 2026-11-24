@@ -3,6 +3,7 @@
 <!-- mcp-name: io.github.330899935/apiary-memory -->
 
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/330899935/apiary-memory)
+[![330899935/apiary-memory MCP server](https://glama.ai/mcp/servers/330899935/apiary-memory/badges/score.svg)](https://glama.ai/mcp/servers/330899935/apiary-memory)
 
 ## The problem it solves
 
