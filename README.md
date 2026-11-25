@@ -144,9 +144,9 @@ cloud, no daemon, no dependencies.
 pip install apiary-memory
 ```
 
-**No terminal, inside Claude Desktop:** double-click [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb). Its manifest is frozen at 0.2.1 and the bundle has not been rebuilt since — it runs the 0.2.1 code. For anything newer, use `pip install apiary-memory`.
+**No terminal, inside Claude Desktop:** double-click [`apiary-memory-0.2.5.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.5/apiary-memory-0.2.5.mcpb). The bundle is built from the `v0.2.5` tag, so the code inside it is the same code PyPI ships as 0.2.5 — `sha256 de08f341…`. If you prefer pip, `pip install apiary-memory` gives you the same server and nothing else.
 
-**Not the app.** A `.mcpb` file is a Claude Desktop extension bundle, not the macOS app. The app is a separate download from the Mac App Store.
+**Not the app.** A `.mcpb` file is a Claude Desktop extension bundle, not the macOS or iOS app. The apps are separate downloads from the App Store and bring encrypted vaults, a review UI and phone capture; the bundle is only the MCP server.
 
 Measured on 2026-10-27, on one MacBook with the Hive running locally — script and raw output in [`bench/`](bench/):
 
