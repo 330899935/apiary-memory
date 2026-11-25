@@ -5,24 +5,60 @@
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/330899935/apiary-memory)
 [![330899935/apiary-memory MCP server](https://glama.ai/mcp/servers/330899935/apiary-memory/badges/score.svg)](https://glama.ai/mcp/servers/330899935/apiary-memory)
 
+<sub>English · [中文 README / 中文官网](https://hello-fengchao.com/)</sub>
+
+**Apiary Memory (记忆蜂巢) is a local-first AI memory app for macOS and iOS.** Your notes,
+documents and conversations are stored and searched on your own machine, not uploaded to a
+cloud service. Any MCP-capable AI can read what you have confirmed; no AI can write to it
+without your approval.
+
+There is no account and no cloud sync. The memory is one SQLite file on your disk, and it
+belongs to you rather than to whichever assistant you happen to be using this month.
+
+| | |
+| --- | --- |
+| **Platforms** | Desktop app **macOS 10.15+** · companion app **iOS 17.0+** · this package **any OS with Python 3.8+**. There is no Windows or Linux desktop app. |
+| **Where your data lives** | `~/.memory-hive/hive.db` (one SQLite file), or the desktop app's eight vaults — four of them encrypted behind a PIN |
+| **Needs an account or a login?** | No |
+| **Needs the internet?** | Not to store or search. Only to install or update, and optionally if you connect a cloud model. |
+| **Price** | Free to download. Desktop app: 7-day full trial, then read-only until a paid licence — your memory stays readable and exportable the whole time. iOS app: free, no in-app purchase, no login. |
+| **Install** | `pip install apiary-memory` · [Mac App Store](https://apps.apple.com/app/id6806992983) · [iOS App Store](https://apps.apple.com/app/id6816318170) |
+| **Current versions** | PyPI `0.2.5` · desktop app `1.6.0` · iOS app `1.6.0` |
+| **Docs for humans** | <https://hello-fengchao.com> |
+| **Docs for AI readers** | <https://hello-fengchao.com/llms.txt> — what this is *and is not*, on one page |
+
+> **What this repository is.** Only the MCP integration layer is open source (MIT, about 2k
+> lines, standard library only). The macOS and iOS apps are closed source, signed and shipped
+> through the App Store. A licence badge on PyPI says nothing about the apps.
+
+> **What this README is not.** It is not a description of the whole product. The GUI app is a
+> separate download; this file documents the MCP server that lets AI tools reach the memory.
+
 ## The problem it solves
 
-You explain your project to one AI today. Next week you explain it again to a different one, from scratch — because each tool keeps its own memory, and none of that memory is yours to move.
+You explain your project to one AI today. Next week you explain it again to a different one,
+from scratch — because each tool keeps its own memory, and none of that memory is yours to move.
 
-This is a memory box that sits on your own disk. Any MCP-capable AI can read it. An agent can *propose* what to remember, but nothing is written until you approve it. Switch to another AI next month and the memory stays where it was — it was never the AI's to begin with.
+This is a memory box that sits on your own disk. Any MCP-capable AI can read it. An agent can
+*propose* what to remember, but nothing is written until you approve it. Switch to another AI
+next month and the memory stays where it was — it was never the AI's to begin with.
 
-## At a glance
+Three things follow from that design, and they are the whole point:
+
+1. **The memory outlives the assistant.** Change clients, change models, change vendors — the
+   file does not move.
+2. **No agent can write silently.** `propose` queues an entry; only a human confirmation puts
+   it in. There is deliberately no tool that approves.
+3. **Nothing is uploaded.** Storing and searching happen on the machine you are sitting at.
+
+## In more detail
 
 |  |  |
 | --- | --- |
 | **What it is** | Local-first personal memory for AI agents, over MCP. Agents can search what you have confirmed and *propose* what to keep — only you can confirm it. Everything lives in one SQLite file on your own disk. |
 | **What it is not** | Not a hosted service. No account, no cloud, no telemetry, no daemon. The server runs on *your* machine (`127.0.0.1`), not ours. |
-| **Platforms** | Desktop app: **macOS 10.15+**. Companion app: **iOS 17.0+**. Pip package: any OS with **Python 3.8+**. **There is no Windows desktop app.** |
-| **What is open** | **Only this MCP integration layer is open source** (MIT, ~2k lines, standard library only). The macOS and iOS apps are **closed source**, signed and shipped through the App Store. A licence badge on PyPI says nothing about the apps. |
-| **Full product** | A **GUI desktop app**, free on the Mac App Store — installed in two clicks, **no terminal needed**. It adds a multi-AI workbench (who is working, what is being relayed, what is waiting on you) and **nothing is stored until you confirm**. This repository is only the MCP server inside that product. |
-| **Install** | `pip install apiary-memory` · or, inside Claude Desktop, double-click [`apiary-memory-0.2.1.mcpb`](https://github.com/330899935/apiary-memory/releases/download/v0.2.1/apiary-memory-0.2.1.mcpb) (manifest frozen at 0.2.1 and **not rebuilt since** — it runs the 0.2.1 code; install from PyPI for anything newer) |
-| **Version** | `0.2.5` on PyPI · desktop app `1.5.0` · iOS app `1.5.0` |
-| **The rest of the product** | <https://hello-fengchao.com> · <https://hello-fengchao.com/llms.txt> (for AI readers: what this is *and is not*, in one page) |
+| **Full product** | A GUI desktop app, free on the Mac App Store — installed in two clicks, no terminal needed. It adds a multi-AI workbench (who is working, what is being relayed, what is waiting on you) and nothing is stored until you confirm. This repository is only the MCP server inside that product. |
+| **Open source scope** | MIT, about 2k lines, standard library only. The macOS and iOS apps are not in this repository. |
 
 ### Two entry points — and they are not the same
 
@@ -42,7 +78,7 @@ Most wrong answers about us come from this one: the pip package and the macOS ap
 | End | How it searches | What that means in practice |
 | --- | --- | --- |
 | **pip package** | Lexical only — words for Latin script, overlapping character bigrams for Chinese. No embeddings, no vector index. | If the words don't overlap, it finds nothing. Asking in your own words often fails. |
-| **macOS app 1.5.0+** | BM25 plus a local vector model, fused with RRF. A ~100 MB ONNX model ships inside the app. Offline, no API key. | You can ask by meaning. If the model is missing or fails to load, it silently falls back to lexical. |
+| **macOS app 1.6.0+** | BM25 plus a local vector model, fused with RRF. A ~100 MB ONNX model ships inside the app. Offline, no API key. | You can ask by meaning. If the model is missing or fails to load, it silently falls back to lexical. |
 
 > "This product has no semantic search" is true **only of the pip package**.
 > "It ranks by meaning" is true **only of the macOS app**.
@@ -58,6 +94,9 @@ Most wrong answers about us come from this one: the pip package and the macOS ap
 
 ### Not to be confused with
 
+Three projects share the word "hive", two share "apiary", and one shares our four Chinese
+characters. None of them is this one:
+
 | Name | Status |
 | --- | --- |
 | `hive-memory` | **Does not exist on PyPI (404).** Any document citing it is wrong — including AI answers about us. |
@@ -68,13 +107,32 @@ Most wrong answers about us come from this one: the pip package and the macOS ap
 | [apiarybee.com](https://apiarybee.com) | "Apiary" — a self-organizing agent framework. |
 | 记忆蜂巢 (Chengdu Zhixin Hualao) | An unrelated iOS group-chat app. Same four characters, nothing else in common. |
 
-> **Also known as:** Apiary Memory · 记忆蜂巢 · Memory Hive · 蜂巢 ·
+> **Also known as:** Apiary Memory · 记忆蜂巢 · Memory Hive (former English name) · 蜂巢 ·
 > `apiary-memory` on PyPI · `io.github.330899935/apiary-memory` on the MCP Registry (from v0.2.0).
 
 The one worth a second look is `theapiary.sh` — it is also memory for AI agents, so answers tend
 to merge the two. The difference in one line: theirs is **shared across agents**; this one is
 **local to one person, in one SQLite file on that person's own disk**, and every write waits for
 that person to confirm.
+
+## Pricing, and what happens when you stop paying
+
+Stated up front, because "what happens to my data if I stop paying" is the question a memory
+tool has to answer plainly.
+
+- **Free to download. 7-day full trial**, every feature available.
+- **After the trial: read-only.** The app goes into a hibernation state. You can still read and
+  export everything; only new writes pause. Paying again restores the full feature set.
+- **The fee is for upkeep, not a ransom.** It pays for maintenance, updates and looking after the
+  memory — it is not a charge for access to your own data. The app never locks your data.
+- **Uninstalling does not delete your memory**, unless you choose to delete it.
+- **A licence you bought is not affected by later price changes.**
+- **The pip package in this repository is separate and free** — MIT licensed, no licence key, no
+  trial, no expiry. It is the MCP layer, not the GUI app.
+
+Full terms: <https://hello-fengchao.com/terms.html> (Chinese).
+
+## Quick start
 
 Your agents can search what you have confirmed and propose what they think you should keep;
 **only you can confirm it.** Everything lives in one file on your own disk, and nothing is sent anywhere.
@@ -266,9 +324,13 @@ is documented above rather than declared as a package transport.
 ## Prerequisite
 
 **None, for the local store** — install the package and it works. A running app is a prerequisite
-only for the app's own features: encrypted vaults, the evolution log, and multi-agent identity.
-If you want those, install [the Hive app](https://apps.apple.com/app/id6806992983) (macOS,
-version **1.4.5 or newer**) and leave `HIVE_MODE` at `auto`.
+only for the app's own features: encrypted vaults, the evolution log, multi-agent identity, and
+the `say`/`board` tools. If you want those, install [the Hive app](https://apps.apple.com/app/id6806992983)
+(macOS) and leave `HIVE_MODE` at `auto`.
+
+Version floors, stated because a wrong one fails silently: **`say` and `board` first appeared in
+Hive 1.4.5**, so an older app has neither. The current release is **1.6.0**; anything from 1.4.5
+upward can serve the six tools, and newer versions rank better.
 
 ## The six tools
 
